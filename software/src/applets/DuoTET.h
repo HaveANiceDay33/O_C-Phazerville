@@ -200,7 +200,12 @@ public:
             cv2note(cvInValues[i], cv_inputs[i].In());
             processedParams[i] = cvInValues[i] + params[i];
         }
-        cv2note(noteA, In(0), forceUpdate); cv2note(noteB, In(1), forceUpdate);
+        ForEachChannel(ch) {
+          if (continuous[ch] || Clock(ch)) {
+            continuous[ch] = !Clock(ch);
+            cv2note(ch?noteB:noteA, In(ch), forceUpdate);
+          }
+        }
         forceUpdate = false;
         int outA = noteToVoltage(getScaleNote(getNoteA()));
         int outB = noteToVoltage(getScaleNote(getNoteB()));
@@ -396,4 +401,5 @@ private:
 
     bool aux_cursor = false;
     bool forceUpdate = false;
+    bool continuous[2] = {true};
 };
