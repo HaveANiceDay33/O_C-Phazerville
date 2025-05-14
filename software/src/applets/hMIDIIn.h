@@ -226,7 +226,9 @@ private:
         if (m_ch > 15) graphics.printf("%3s", "Om");
         else graphics.printf("%3d", m_ch + 1);
 
-        gfxIcon(2, 34, MIDI_ICON); gfxPrint(13, 35, midi_fn_name[map.function]);
+        gfxIcon(2, 34, MIDI_ICON);
+        if (map.function <= HEM_MIDI_MAX_FUNCTION)
+          gfxPrint(13, 35, midi_fn_name[map.function]);
         if (map.function == HEM_MIDI_CC_OUT)
             gfxPrint(map.function_cc);
 
