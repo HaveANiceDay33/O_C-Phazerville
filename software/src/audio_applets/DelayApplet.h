@@ -155,7 +155,7 @@ public:
         break;
       case CLOCK:
         gfxStartCursor();
-        gfxPrintIcon(clock_source.Icon());
+        gfxPrint(clock_source);
         gfxEndCursor(cursor == CLOCK_SOURCE);
         gfxPrint(" ");
 
@@ -174,7 +174,7 @@ public:
     }
 
     gfxStartCursor(unit_x + 2 * 6, 15);
-    gfxPrintIcon(delay_time_cv.Icon());
+    gfxPrint(delay_time_cv);
     gfxEndCursor(cursor == TIME_CV, false, delay_time_cv.InputName());
 
     int param_right_x = 63 - 8;
@@ -184,7 +184,7 @@ public:
     gfxEndCursor(cursor == FEEDBACK);
 
     gfxStartCursor();
-    gfxPrintIcon(feedback_cv.Icon());
+    gfxPrint(feedback_cv);
     gfxEndCursor(cursor == FEEDBACK_CV, false, feedback_cv.InputName());
 
     // gfxIcon(54, 25, LOOP_ICON);
@@ -197,7 +197,7 @@ public:
     gfxEndCursor(cursor == WET);
 
     gfxStartCursor();
-    gfxPrintIcon(wet_cv.Icon());
+    gfxPrint(wet_cv);
     gfxEndCursor(cursor == WET_CV, false, wet_cv.InputName());
 
     gfxPrint(1, 45, "Taps:");

@@ -386,6 +386,17 @@ public:
         }
     }
 
+    void gfxPrint(DigitalInputMap &map) {
+      gfxPrintIcon(map.Icon());
+      if (map.Gate()) gfxInvert(gfxGetPrintPosX()-8, gfxGetPrintPosY(), 8, 8);
+    }
+    void gfxPrint(CVInputMap &map) {
+      gfxPrintIcon(map.Icon());
+      const int xpos = gfxGetPrintPosX() - 1;
+      const int ypos = gfxGetPrintPosY() + 4;
+      const int height = map.InRescaled(24);
+      gfxLine(xpos, ypos, xpos, ypos - height);
+    }
 
     void gfxStartCursor(int x, int y) {
         gfxPos(x, y);

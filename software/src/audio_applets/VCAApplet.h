@@ -48,7 +48,7 @@ public:
     gfxPrintDb(level);
     gfxEndCursor(cursor == 0);
     gfxStartCursor();
-    gfxPrintIcon(level_cv.Icon());
+    gfxPrint(level_cv);
     gfxEndCursor(cursor == 1, false, level_cv.InputName());
 
     gfxPrint(1, 25, "Off:");
@@ -61,7 +61,7 @@ public:
     graphics.printf("%3d%%", shape);
     gfxEndCursor(cursor == 3);
     gfxStartCursor();
-    gfxPrintIcon(shape_cv.Icon());
+    gfxPrint(shape_cv);
     gfxEndCursor(cursor == 4, false, shape_cv.InputName());
 
     gfxPrint(1, 45, "Rectify: ");

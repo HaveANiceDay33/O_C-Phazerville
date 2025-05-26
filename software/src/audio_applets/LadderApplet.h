@@ -34,7 +34,7 @@ public:
     gfxPrintPitchHz(pitch);
     gfxEndCursor(cursor == 0);
     gfxStartCursor();
-    gfxPrintIcon(pitch_cv.Icon());
+    gfxPrint(pitch_cv);
     gfxEndCursor(cursor == 1, false, pitch_cv.InputName());
 
     gfxPrint(label_x, 25, "Res: ");
@@ -42,7 +42,7 @@ public:
     graphics.printf("%3d%%", res);
     gfxEndCursor(cursor == 2);
     gfxStartCursor();
-    gfxPrintIcon(res_cv.Icon());
+    gfxPrint(res_cv);
     gfxEndCursor(cursor == 3, false, res_cv.InputName());
 
     gfxPrint(label_x, 35, "Drv: ");
@@ -50,7 +50,7 @@ public:
     graphics.printf("%3d%%", gain);
     gfxEndCursor(cursor == 4);
     gfxStartCursor();
-    gfxPrintIcon(gain_cv.Icon());
+    gfxPrint(gain_cv);
     gfxEndCursor(cursor == 5, false, gain_cv.InputName());
 
     gfxPrint(label_x, 45, "PBG: ");

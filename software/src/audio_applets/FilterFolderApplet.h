@@ -61,7 +61,7 @@ public:
     graphics.printf("%3d%%", fold);
     gfxEndCursor(cursor == FOLD_AMT);
     gfxStartCursor();
-    gfxPrintIcon(fold_cv.Icon());
+    gfxPrint(fold_cv);
     gfxEndCursor(cursor == FOLD_CV, false, fold_cv.InputName());
 
     label_y += 10;
@@ -77,7 +77,7 @@ public:
       gfxPrintPitchHz(pitch);
       gfxEndCursor(cursor == FILTER_FREQ);
       gfxStartCursor();
-      gfxPrintIcon(pitch_cv.Icon());
+      gfxPrint(pitch_cv);
       gfxEndCursor(cursor == FILTER_FREQ_CV, false, pitch_cv.InputName());
 
       label_y += 10;
@@ -87,7 +87,7 @@ public:
         graphics.printf("%3d%%", res);
         gfxEndCursor(cursor == FILTER_RES);
         gfxStartCursor();
-        gfxPrintIcon(res_cv.Icon());
+        gfxPrint(res_cv);
         gfxEndCursor(cursor == FILTER_RES_CV, false, res_cv.InputName());
       } else {
         gfxPrint(label_x, label_y, "LF: ");
@@ -95,7 +95,7 @@ public:
         gfxPrintDb(tiltbias);
         gfxEndCursor(cursor == FILTER_RES);
         gfxStartCursor();
-        gfxPrintIcon(res_cv.Icon());
+        gfxPrint(res_cv);
         gfxEndCursor(cursor == FILTER_RES_CV, false, res_cv.InputName());
       }
     }
@@ -106,7 +106,7 @@ public:
     gfxPrintDb(amplevel);
     gfxEndCursor(cursor == AMP);
     gfxStartCursor();
-    gfxPrintIcon(amp_cv.Icon());
+    gfxPrint(amp_cv);
     gfxEndCursor(cursor == AMP_CV, false, amp_cv.InputName());
 
     gfxDisplayInputMapEditor();

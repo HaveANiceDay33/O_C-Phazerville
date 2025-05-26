@@ -62,7 +62,7 @@ public:
     gfxPrintDb(level);
     if (cursor == IN_LEVEL) gfxCursor(26, 53, 26);
     gfxStartCursor();
-    gfxPrintIcon(level_cv.Icon());
+    gfxPrint(level_cv);
     gfxEndCursor(cursor == LEVEL_CV, false, level_cv.InputName());
 
     for (int ch = 0; ch < Channels; ++ch) {

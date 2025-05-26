@@ -60,7 +60,7 @@ public:
     if (cursor == 0) gfxCursor(1, 40, 62, 14);
 
     gfxStartCursor(28, 42);
-    gfxPrintIcon(crosspan_cv.Icon(), 9);
+    gfxPrint(crosspan_cv);
     gfxEndCursor(cursor == 1, false, crosspan_cv.InputName());
 
     gfxStartCursor(32 - 3 * 9, 55);

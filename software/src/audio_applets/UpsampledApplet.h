@@ -42,7 +42,7 @@ public:
   void View() override {
     gfxPrint(1, 15, "Source:");
     gfxStartCursor();
-    gfxPrintIcon(input.Icon());
+    gfxPrint(input);
     gfxEndCursor(cursor == 0, false, input.InputName());
 
     gfxPrint(1, 25, "Interp:");
@@ -66,7 +66,7 @@ public:
     gfxPrintDb(gain);
     gfxEndCursor(cursor == 2);
     gfxStartCursor();
-    gfxPrintIcon(gain_cv.Icon());
+    gfxPrint(gain_cv);
     gfxEndCursor(cursor == 3, false, gain_cv.InputName());
 
     gfxPrint(1, 45, "AC:    ");

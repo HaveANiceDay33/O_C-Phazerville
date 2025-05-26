@@ -34,7 +34,6 @@
 // using other applets.
 
 #include <arm_math.h>
-#include "../CVInputMap.h"
 
 #define DUOTET_SCALE_MAX_LEN 32
 
@@ -203,7 +202,7 @@ public:
         gfxEndCursor(EditMode() && (!aux_cursor || cursor <= DUOTET_PARAM_OFFSET));
         if(cursor > DUOTET_PARAM_OFFSET) {
           gfxStartCursor();
-          gfxPrintIcon(cv_inputs[cursor].Icon());
+          gfxPrint(cv_inputs[cursor]);
           gfxEndCursor(EditMode() && aux_cursor, false, cv_inputs[cursor].InputName());
         }
 

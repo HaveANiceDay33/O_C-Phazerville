@@ -140,7 +140,7 @@ public:
     graphics.printf("%3ddB", level);
     gfxEndCursor(cursor == LEVEL);
     gfxStartCursor();
-    gfxPrintIcon(level_cv.Icon());
+    gfxPrint(level_cv);
     gfxEndCursor(cursor == LEVEL_CV, false, level_cv.InputName());
 
     y += 10;
@@ -153,7 +153,7 @@ public:
     graphics.printf("%3d%%", playrate);
     gfxEndCursor(cursor == PLAYRATE, true);
     gfxStartCursor();
-    gfxPrintIcon(playrate_cv.Icon());
+    gfxPrint(playrate_cv);
     gfxEndCursor(cursor == PLAYRATE_CV, false, playrate_cv.InputName());
 
     y += 10;
