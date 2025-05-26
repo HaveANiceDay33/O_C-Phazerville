@@ -179,7 +179,7 @@ public:
         case TRIG2:
         case TRIG3:
         case TRIG4:
-            HS::trigger_mapping[cursor-TRIG1] = constrain( HS::trigger_mapping[cursor-TRIG1] + direction, 0, TRIGMAP_MAX);
+            HS::trigmap[cursor-TRIG1].ChangeSource(direction);
             break;
 
         case OUTSKIP1:
@@ -385,7 +385,7 @@ private:
         for (int ch=0; ch<4; ++ch) {
             const int x = ch * 32;
             // Physical trigger input mappings
-            gfxPrint(1 + x, y, OC::Strings::trigger_input_names_none[ HS::trigger_mapping[ch] ] );
+            gfxPrint(1 + x, y, HS::trigmap[ch].InputName() );
             // Manual trigger buttons
             gfxIcon(4 + x, y + 10, (button_ticker && ch == cursor-BOOP1)?BTN_ON_ICON:BTN_OFF_ICON);
         }

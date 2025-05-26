@@ -18,7 +18,7 @@ namespace HS {
 
 static constexpr int GATE_THRESHOLD = 15 << 7; // 1.25 volts
 static constexpr int MIDIMAP_MAX = 32;
-static constexpr int TRIGMAP_MAX = OC::DIGITAL_INPUT_LAST + ADC_CHANNEL_LAST + DAC_CHANNEL_LAST;
+static constexpr int TRIGMAP_MAX = OC::DIGITAL_INPUT_LAST + ADC_CHANNEL_LAST + DAC_CHANNEL_LAST + MIDIMAP_MAX;
 static constexpr int CVMAP_MAX = ADC_CHANNEL_LAST + DAC_CHANNEL_LAST + MIDIMAP_MAX;
 
 struct MIDILogEntry {
@@ -682,17 +682,24 @@ struct MIDIFrame {
 // shared IO Frame, updated every tick
 // this will allow chaining applets together, multiple stages of processing
 struct IOFrame {
+    // settings
     bool autoMIDIOut = false;
+    uint8_t clockskip[DAC_CHANNEL_LAST] = {0};
+
+    // pre-calculated clocks, subject to trigger mapping
     bool clocked[OC::DIGITAL_INPUT_LAST + ADC_CHANNEL_LAST];
+
+    // physical input state cache
     bool gate_high[OC::DIGITAL_INPUT_LAST + ADC_CHANNEL_LAST];
     int inputs[ADC_CHANNEL_LAST];
+
+    // output value cache, countdowns
     int outputs[DAC_CHANNEL_LAST];
     int output_diff[DAC_CHANNEL_LAST];
     int outputs_smooth[DAC_CHANNEL_LAST];
     int clock_countdown[DAC_CHANNEL_LAST];
-    uint8_t clockskip[DAC_CHANNEL_LAST] = {0};
-    bool clockout_q[DAC_CHANNEL_LAST]; // for loopback
     int adc_lag_countdown[ADC_CHANNEL_LAST]; // Time between a clock event and an ADC read event
+    // calculated values
     uint32_t last_clock[ADC_CHANNEL_LAST]; // Tick number of the last clock observed by the child class
     uint32_t cycle_ticks[ADC_CHANNEL_LAST]; // Number of ticks between last two clocks
     bool changed_cv[ADC_CHANNEL_LAST]; // Has the input changed by more than 1/8 semitone since the last read?
@@ -703,10 +710,6 @@ struct IOFrame {
 
     // --- Soft IO ---
     void Out(DAC_CHANNEL channel, int value) {
-        // rising edge detection for trigger loopback
-        if (value > GATE_THRESHOLD && outputs[channel] < GATE_THRESHOLD)
-            clockout_q[channel] = true;
-
         output_diff[channel] += value - outputs[channel];
         outputs[channel] = value;
     }
@@ -715,76 +718,14 @@ struct IOFrame {
         if (0 == clockskip[ch] || random(100) >= clockskip[ch]) {
             clock_countdown[ch] = pulselength;
             outputs[ch] = PULSE_VOLTAGE * (12 << 7);
-            clockout_q[ch] = true;
         }
     }
     void NudgeSkip(int ch, int dir) {
         clockskip[ch] = constrain(clockskip[ch] + dir, 0, 100);
     }
 
-    // TODO: Hardware IO should be extracted
     // --- Hard IO ---
-    void Load() {
-        bool clocktmp[OC::DIGITAL_INPUT_LAST + ADC_CHANNEL_LAST];
-        clocktmp[0] = OC::DigitalInputs::clocked<OC::DIGITAL_INPUT_1>();
-        clocktmp[1] = OC::DigitalInputs::clocked<OC::DIGITAL_INPUT_2>();
-        clocktmp[2] = OC::DigitalInputs::clocked<OC::DIGITAL_INPUT_3>();
-        clocktmp[3] = OC::DigitalInputs::clocked<OC::DIGITAL_INPUT_4>();
-        gate_high[0] = OC::DigitalInputs::read_immediate<OC::DIGITAL_INPUT_1>();
-        gate_high[1] = OC::DigitalInputs::read_immediate<OC::DIGITAL_INPUT_2>();
-        gate_high[2] = OC::DigitalInputs::read_immediate<OC::DIGITAL_INPUT_3>();
-        gate_high[3] = OC::DigitalInputs::read_immediate<OC::DIGITAL_INPUT_4>();
-        for (int i = 0; i < ADC_CHANNEL_LAST; ++i) {
-            // Set CV inputs
-            inputs[i] = OC::ADC::raw_pitch_value(ADC_CHANNEL(i));
-
-            // calculate gates/clocks for all ADC inputs as well
-            gate_high[OC::DIGITAL_INPUT_LAST + i] = inputs[i] > GATE_THRESHOLD;
-            clocktmp[OC::DIGITAL_INPUT_LAST + i] = (gate_high[OC::DIGITAL_INPUT_LAST + i] && last_cv[i] < GATE_THRESHOLD);
-
-            if (abs(inputs[i] - last_cv[i]) > HEMISPHERE_CHANGE_THRESHOLD) {
-                changed_cv[i] = 1;
-                last_cv[i] = inputs[i];
-            } else changed_cv[i] = 0;
-
-            // Handle clock pulse timing
-            if (clock_countdown[i] > 0) {
-                if (--clock_countdown[i] == 0) outputs[i] = 0;
-            }
-        }
-
-        // pre-calculate clock triggers
-        static constexpr int offset = OC::DIGITAL_INPUT_LAST + ADC_CHANNEL_LAST;
-        for (int ch = 0; ch < APPLET_SLOTS * 2; ++ch) {
-          bool result = 0;
-          const size_t virt_chan = (ch) % (APPLET_SLOTS * 2);
-          const int trmap = trigger_mapping[ch];
-
-          // clock triggers
-          if (clock_m.IsRunning() && clock_m.GetMultiply(virt_chan) != 0)
-              result = clock_m.Tock(virt_chan);
-          else if (trmap > 0) {
-            if (trmap <= offset)
-              result = clocktmp[ trmap - 1 ];
-            else {
-              result = clockout_q[ trmap - 1 - offset ];
-            }
-          }
-
-          // Try to eat a boop
-          result = result || clock_m.Beep(virt_chan);
-
-          if (result) {
-              cycle_ticks[ch] = OC::CORE::ticks - last_clock[ch];
-              last_clock[ch] = OC::CORE::ticks;
-          }
-
-          clocked[ch] = result;
-        }
-        for (int i = 0; i < DAC_CHANNEL_LAST; ++i) {
-          clockout_q[i] = false;
-        }
-    }
+    void Load();
 
     void Send() {
         const DAC_CHANNEL chan[DAC_CHANNEL_LAST] = {

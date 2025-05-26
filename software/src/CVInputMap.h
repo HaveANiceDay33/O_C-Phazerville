@@ -89,27 +89,30 @@ struct DigitalInputMap {
     NONE,
     CLOCK,
     DIGITAL_INPUT,
+    CV_INPUT,
     CV_OUTPUT,
     MIDI_MAP,
   };
 
-  uint8_t source = 0;
+  int8_t source = 0;
   int8_t division = 0; // -2 = /3, -1 = /2, 0 = x1, 1 = x2, 2 = x3...
   bool last_gate_state = true; // for detecting clocks
   static const int ppqn = 4;
   static constexpr float internal_clocked_gate_pw = 0.5f;
-  static const int num_sources = 2 + OC::DIGITAL_INPUT_LAST + DAC_CHANNEL_LAST + MIDIMAP_MAX;
+  static const int num_sources = HS::TRIGMAP_MAX;
 
   static constexpr size_t Size = 16; // Make this compatible with Packable
 
   void ChangeSource(int dir) {
-    source = constrain(source + dir, 0, num_sources-1);
+    source = constrain(source + dir, -1, num_sources);
   }
 
   bool Gate() {
     switch (source_type()) {
       case CLOCK: {
+        if (!HS::clock_m.IsRunning()) return false;
         uint32_t ticks_since_beat = OC::CORE::ticks - HS::clock_m.beat_tick;
+        // TODO: implement division for ticks_per_beat
         uint32_t tick_phase
           = (ppqn * ticks_since_beat) % HS::clock_m.ticks_per_beat;
         bool gate
@@ -117,7 +120,10 @@ struct DigitalInputMap {
         return gate;
       }
       case DIGITAL_INPUT:
+      case CV_INPUT:
         return HS::frame.gate_high[digital_input_index()];
+        // gate_high is already calculated for ADC
+        //return HS::frame.inputs[cv_input_index()] > HS::GATE_THRESHOLD;
       case CV_OUTPUT:
         return HS::frame.outputs[cv_output_index()] > HS::GATE_THRESHOLD;
       case MIDI_MAP:
@@ -145,6 +151,8 @@ struct DigitalInputMap {
         return HS::clock_m.cycle ? METRO_L_ICON : METRO_R_ICON;
       case DIGITAL_INPUT:
         return DIGITAL_INPUT_ICONS + digital_input_index() * 8;
+      case CV_INPUT:
+        return PARAM_MAP_ICONS + (1 + cv_input_index()) * 8;
       case CV_OUTPUT:
         return PARAM_MAP_ICONS + (1 + ADC_CHANNEL_LAST + cv_output_index()) * 8;
       case MIDI_MAP:
@@ -154,9 +162,15 @@ struct DigitalInputMap {
         return PARAM_MAP_ICONS + 0;
     }
   }
+  char const* InputName() const {
+    if (source == -1) return "CLK"; // TODO: division
+    if (source > OC::DIGITAL_INPUT_LAST + ADC_CHANNEL_LAST + DAC_CHANNEL_LAST)
+      return OC::Strings::cv_input_names_none[source - OC::DIGITAL_INPUT_LAST];
+    return OC::Strings::trigger_input_names_none[source];
+  }
 
   uint16_t Pack() const {
-    return source | as_unsigned(division << 8);
+    return (source & 0xFF) | as_unsigned(division << 8);
   }
 
   void Unpack(uint16_t data) {
@@ -167,32 +181,36 @@ struct DigitalInputMap {
 private:
   DigitalSourceType source_type() const {
     switch (source) {
+      case -1:
+        return CLOCK;
       case 0:
         return NONE;
-      case 1:
-        return CLOCK;
       default: {
-        if (source < 2 + OC::DIGITAL_INPUT_LAST) {
+        if (source < 1 + OC::DIGITAL_INPUT_LAST)
           return DIGITAL_INPUT;
-        } else if (source < 2 + OC::DIGITAL_INPUT_LAST + ADC_CHANNEL_LAST) {
+
+        if (source < 1 + OC::DIGITAL_INPUT_LAST + ADC_CHANNEL_LAST)
+          return CV_INPUT;
+
+        if (source < 1 + OC::DIGITAL_INPUT_LAST + ADC_CHANNEL_LAST + DAC_CHANNEL_LAST)
           return CV_OUTPUT;
-        } else {
-          return MIDI_MAP;
-        }
+
+        return MIDI_MAP;
       }
     }
   }
 
   inline int8_t digital_input_index() const {
-    return source - 2;
+    return source - 1;
   }
-
+  inline int8_t cv_input_index() const {
+    return source - 1 - OC::DIGITAL_INPUT_LAST;
+  }
   inline int8_t cv_output_index() const {
-    return source - 2 - OC::DIGITAL_INPUT_LAST;
+    return source - 1 - OC::DIGITAL_INPUT_LAST - ADC_CHANNEL_LAST;
   }
-
   inline int8_t midi_map_index() const {
-    return source - 2 - OC::DIGITAL_INPUT_LAST - ADC_CHANNEL_LAST;
+    return source - 1 - OC::DIGITAL_INPUT_LAST - ADC_CHANNEL_LAST - DAC_CHANNEL_LAST;
   }
 };
 

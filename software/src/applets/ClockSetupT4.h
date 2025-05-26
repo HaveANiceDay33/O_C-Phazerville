@@ -189,7 +189,7 @@ public:
         case TRIG6:
         case TRIG7:
         case TRIG8:
-            HS::trigger_mapping[cursor-TRIG1] = constrain( HS::trigger_mapping[cursor-TRIG1] + direction, 0, TRIGMAP_MAX);
+            HS::trigmap[cursor-TRIG1].ChangeSource(direction);
             break;
 
         /* the boops shall return in a hidden form
@@ -401,7 +401,7 @@ private:
             if (ch == 4) y += 10;
 
             // Physical trigger input mappings
-            gfxPrint(1 + x, y, OC::Strings::trigger_input_names_none[ HS::trigger_mapping[ch] ] );
+            gfxPrint(1 + x, y, HS::trigmap[ch].InputName() );
 
             // Trigger indicators
             gfxIcon(23 + x, y, DOWN_BTN_ICON);

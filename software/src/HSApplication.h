@@ -164,12 +164,7 @@ public:
     }
 
     bool Gate(int ch) {
-        const int t = trigger_mapping[ch];
-        const int offset = OC::DIGITAL_INPUT_LAST + ADC_CHANNEL_LAST;
-        if (!t) return false;
-        return (t <= offset)
-          ? frame.gate_high[t - 1]
-          : (frame.outputs[t - 1 - offset] > GATE_THRESHOLD);
+        return trigmap[ch].Gate();
     }
 
     void GateOut(int ch, bool high) {
@@ -177,29 +172,7 @@ public:
     }
 
     bool Clock(int ch) {
-        bool clocked = 0;
-        const int trmap = trigger_mapping[ch];
-
-        if (HS::clock_m.IsRunning() && HS::clock_m.GetMultiply(ch) != 0)
-            clocked = HS::clock_m.Tock(ch);
-        else if (trmap > 0) {
-          const int offset = OC::DIGITAL_INPUT_LAST + ADC_CHANNEL_LAST;
-          if (trmap <= offset)
-            clocked = frame.clocked[ trmap - 1 ];
-          else {
-            clocked = frame.clockout_q[ trmap - 1 - offset ];
-            frame.clockout_q[ trmap - 1 - offset ] = false;
-          }
-        }
-
-        // manual triggers
-        clocked = clocked || HS::clock_m.Beep(ch);
-
-        if (clocked) {
-            frame.cycle_ticks[ch] = OC::CORE::ticks - frame.last_clock[ch];
-            frame.last_clock[ch] = OC::CORE::ticks;
-        }
-        return clocked;
+        return frame.clocked[ch];
     }
 
     void ClockOut(int ch, int ticks = 100) {

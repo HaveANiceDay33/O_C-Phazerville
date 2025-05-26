@@ -135,7 +135,7 @@ public:
             graphics.print( (mult > 0) ? "x" : "/" );
             graphics.print( (mult > 0) ? mult : 1 - mult );
           } else { // Trigger mapping
-            graphics.print( OC::Strings::trigger_input_names_none[ HS::trigger_mapping[ch + io_offset] ] );
+            graphics.print( HS::trigmap[ch + io_offset].InputName() );
           }
           graphics.invertRect(ch*64, y - 1, 19, 9);
 
@@ -229,10 +229,7 @@ public:
     bool Clock(int ch, bool physical = 0);
 
     bool Gate(int ch) {
-        const int t = trigger_mapping[ch + io_offset];
-        const int offset = OC::DIGITAL_INPUT_LAST + ADC_CHANNEL_LAST;
-        if (!t) return false;
-        return (t <= offset) ? frame.gate_high[t - 1] : (frame.outputs[t - 1 - offset] > GATE_THRESHOLD);
+        return trigmap[ch + io_offset].Gate();
     }
     void Out(int ch, int value, int octave = 0) {
         frame.Out( (DAC_CHANNEL)(ch + io_offset), value + (octave * (12 << 7)));

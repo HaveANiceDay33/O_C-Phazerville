@@ -37,13 +37,6 @@ namespace HS {
 
   bool cursor_wrap = 0;
   bool auto_save_enabled = false;
-#ifdef ARDUINO_TEENSY41
-  int trigger_mapping[APPLET_SLOTS * 2] = { 1, 2, 3, 4, 1, 2, 3, 4 };
-  int cvmapping[APPLET_SLOTS * 2] = { 1, 2, 3, 4, 5, 6, 7, 8 };
-#else
-  int trigger_mapping[APPLET_SLOTS * 2] = { 1, 2, 3, 4 };
-  int cvmapping[APPLET_SLOTS * 2] = { 1, 2, 3, 4 };
-#endif
   DigitalInputMap trigmap[ADC_CHANNEL_LAST];
   CVInputMap cvmap[ADC_CHANNEL_LAST];
   uint8_t trig_length = 10; // in ms, multiplier for HEMISPHERE_CLOCK_TICKS
@@ -59,8 +52,8 @@ namespace HS {
       quantizer[i].Init();
 
     for (int i = 0; i < APPLET_SLOTS * 2; ++i) {
-      trigger_mapping[i] = (i%4) + 1;
-      cvmapping[i] = i + 1;
+      trigmap[i].source = (i%4) + 1;
+      cvmap[i].source = i + 1;
       clock_m.SetMultiply(0, i);
     }
   }

@@ -149,7 +149,7 @@ public:
       uint16_t cvmap = 0;
       uint16_t trigmap = 0;
       for (size_t i = 0; i < 4; ++i) {
-        trigmap |= (uint16_t(HS::trigger_mapping[i] + 1) & 0x0F) << (i*4);
+        trigmap |= (uint16_t(HS::trigmap[i].source + 1) & 0x0F) << (i*4);
         cvmap |= (uint16_t(HS::cvmap[i].source) & 0x0F) << (i*4);
       }
 
@@ -164,7 +164,7 @@ public:
       for (size_t i = 0; i < 4; ++i) {
         int val = (uint16_t(values_[HEMISPHERE_TRIGMAP]) >> (i*4)) & 0x0F;
         if (val != 0)
-          HS::trigger_mapping[i] = constrain(val - 1, 0, TRIGMAP_MAX);
+          HS::trigmap[i].source = constrain(val - 1, 0, TRIGMAP_MAX);
 
         val = (uint16_t(values_[HEMISPHERE_CVMAP]) >> (i*4)) & 0x0F;
         if (val != 0)
@@ -391,7 +391,7 @@ public:
         // Input Mappings
         uint64_t data = 0;
         for (size_t i = 0; i < 4; ++i) {
-          Pack(data, PackLocation{0 + i*16, 4}, HS::trigger_mapping[i] + 1);
+          Pack(data, PackLocation{0 + i*16, 4}, HS::trigmap[i].source + 1);
           Pack(data, PackLocation{4 + i*16, 4}, HS::cvmap[i].source);
           Pack(data, PackLocation{8 + i*16, 8}, HS::frame.clockskip[i]);
         }
@@ -473,7 +473,7 @@ public:
         for (size_t i = 0; i < 4; ++i)
         {
           int val = Unpack(data, PackLocation{i*16, 4});
-          if (val != 0) HS::trigger_mapping[i] = constrain(val - 1, 0, TRIGMAP_MAX);
+          if (val != 0) HS::trigmap[i].source = constrain(val - 1, -1, TRIGMAP_MAX);
 
           val = Unpack(data, PackLocation{4 + i*16, 4});
           if (val != 0) HS::cvmap[i].source = constrain(val - 1, 0, CVMAP_MAX);
@@ -961,9 +961,7 @@ public:
                 {
                   clock_m.SetMultiply(clock_m.GetMultiply(chan) + event.value, chan);
                 } else
-                  HS::trigger_mapping[zoom_slot*2 + zoom_cursor - 1] = constrain(
-                      HS::trigger_mapping[zoom_slot*2 + zoom_cursor - 1] + event.value,
-                      0, TRIGMAP_MAX);
+                  HS::trigmap[zoom_slot*2 + zoom_cursor - 1].ChangeSource(event.value);
                 break;
               }
               case 3:
@@ -1149,9 +1147,7 @@ private:
         case TRIGMAP2:
         case TRIGMAP3:
         case TRIGMAP4:
-            HS::trigger_mapping[config_cursor-TRIGMAP1] = constrain(
-                HS::trigger_mapping[config_cursor-TRIGMAP1] + dir,
-                0, TRIGMAP_MAX);
+            HS::trigmap[config_cursor-TRIGMAP1].ChangeSource(dir);
             break;
         case CVMAP1:
         case CVMAP2:
@@ -1277,7 +1273,7 @@ private:
 
         for (int ch=0; ch<4; ++ch) {
           // Physical trigger input mappings
-          gfxPrint(4 + ch*32, 25, OC::Strings::trigger_input_names_none[ HS::trigger_mapping[ch] ] );
+          gfxPrint(4 + ch*32, 25, HS::trigmap[ch].InputName() );
 
           // Physical CV input mappings
           gfxPrint(4 + ch*32, 45, HS::cvmap[ch].InputName() );
