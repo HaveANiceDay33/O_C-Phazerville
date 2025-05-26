@@ -90,19 +90,20 @@ struct DigitalInputMap {
     CLOCK,
     DIGITAL_INPUT,
     CV_OUTPUT,
+    MIDI_MAP,
   };
 
-  int8_t source = 0;
+  uint8_t source = 0;
   int8_t division = 0; // -2 = /3, -1 = /2, 0 = x1, 1 = x2, 2 = x3...
   bool last_gate_state = true; // for detecting clocks
   static const int ppqn = 4;
   static constexpr float internal_clocked_gate_pw = 0.5f;
-  static const int num_sources = 2 + OC::DIGITAL_INPUT_LAST + ADC_CHANNEL_LAST;
+  static const int num_sources = 2 + OC::DIGITAL_INPUT_LAST + DAC_CHANNEL_LAST + MIDIMAP_MAX;
 
   static constexpr size_t Size = 16; // Make this compatible with Packable
 
   void ChangeSource(int dir) {
-    source = constrain(source + dir, 0, num_sources);
+    source = constrain(source + dir, 0, num_sources-1);
   }
 
   bool Gate() {
@@ -119,6 +120,8 @@ struct DigitalInputMap {
         return HS::frame.gate_high[digital_input_index()];
       case CV_OUTPUT:
         return HS::frame.outputs[cv_output_index()] > HS::GATE_THRESHOLD;
+      case MIDI_MAP:
+        return HS::frame.MIDIState.mapping[midi_map_index()].output > HS::GATE_THRESHOLD;
       case NONE:
       default:
         return false;
@@ -144,6 +147,8 @@ struct DigitalInputMap {
         return DIGITAL_INPUT_ICONS + digital_input_index() * 8;
       case CV_OUTPUT:
         return PARAM_MAP_ICONS + (1 + ADC_CHANNEL_LAST + cv_output_index()) * 8;
+      case MIDI_MAP:
+        return PhzIcons::midiIn;
       case NONE:
       default:
         return PARAM_MAP_ICONS + 0;
@@ -169,8 +174,10 @@ private:
       default: {
         if (source < 2 + OC::DIGITAL_INPUT_LAST) {
           return DIGITAL_INPUT;
-        } else {
+        } else if (source < 2 + OC::DIGITAL_INPUT_LAST + ADC_CHANNEL_LAST) {
           return CV_OUTPUT;
+        } else {
+          return MIDI_MAP;
         }
       }
     }
@@ -182,6 +189,10 @@ private:
 
   inline int8_t cv_output_index() const {
     return source - 2 - OC::DIGITAL_INPUT_LAST;
+  }
+
+  inline int8_t midi_map_index() const {
+    return source - 2 - OC::DIGITAL_INPUT_LAST - ADC_CHANNEL_LAST;
   }
 };
 
