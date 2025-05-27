@@ -16,12 +16,13 @@ public:
   void Start() {
     for (int i = 0; i < Channels; i++) {
       in_conns[i].connect(input, i, mixer[i], 3);
+      mixer[i].gain(3, 1.0);
       out_conns[i].connect(mixer[i], 0, output, i);
     }
 
     hpfilter[0].resonance(1.0);
     hpfilter[1].resonance(1.0);
-    FileHPF(0);
+    SetFilter(0);
 
     // -- SD card WAV players
     if (!SDcard_Ready) {
@@ -39,6 +40,9 @@ public:
   }
 
   void Controller() {
+    djfilter_mod = constrain(djfilter + djfilter_cv.InRescaled(128), -64, 64);
+    SetFilter(filter_on * djfilter_mod);
+
     float gain = dbToScalar(level) * level_cv.InF(1.0f);
 
     const int i = 0;
@@ -102,27 +106,33 @@ public:
 
     if (cursor == FILTER_PARAM) {
       if (EditMode()) {
-        if (djfilter > 0) gfxPrint(40, y, "HPF");
-        else if (djfilter < 0) gfxPrint(40, y, "LPF");
+        if (djfilter > 0) gfxPrint(36, y, "HPF");
+        else if (djfilter < 0) gfxPrint(36, y, "LPF");
         else gfxPrint(40, y, "X");
       } else {
         gfxIcon(35, y, RIGHT_ICON);
         gfxIcon(42, y, (filter_on) ? SLEW_ICON : PhzIcons::tuner);
       }
-
-      if (filter_on) {
-        const int w = abs(djfilter);
-        const int x = (djfilter<0)?(63 - w):0;
-        gfxInvert(x, y-3, w, 4);
-      }
-    }
-
-    if (cursor != FILTER_PARAM) {
+    } else {
       if (wavplayer_ready[0])
         gfxPrint(34, y, GetFileBPM());
       else
         gfxPrint(34, y, "(--)");
     }
+
+    // filter mod
+    gfxStartCursor(56, y);
+    gfxPrint(djfilter_cv);
+    gfxEndCursor(cursor == FILTER_CV, false, djfilter_cv.InputName());
+
+    // filter meter at the top
+    if (filter_on) {
+      const int w = abs(djfilter_mod);
+      const int x = (djfilter_mod<0)?(63 - w):0;
+      gfxInvert(x, y-3, w, 4);
+    }
+
+    y += 10;
     if (FileIsPlaying()) {
       uint32_t tmilli = GetFileTime(0);
       uint32_t tsec = tmilli / 1000;
@@ -130,11 +140,11 @@ public:
       tmilli %= 1000;
       tsec %= 60;
 
-      gfxPos(1, y+10);
+      gfxPos(1, y);
       graphics.printf("%02lu:%02lu.%03lu", tmin, tsec, tmilli);
     }
 
-    y += 20;
+    y += 10;
     gfxPrint(1, y, "Lvl:");
     gfxStartCursor();
     graphics.printf("%3ddB", level);
@@ -172,7 +182,6 @@ public:
   void AuxButton() {
     if (FILTER_PARAM == cursor) {
       filter_on = !filter_on;
-      SetFilter(djfilter * filter_on);
     } else if (PLAYRATE == cursor) {
       tempo_sync ^= 1;
     } else
@@ -181,6 +190,7 @@ public:
   void OnButtonPress() {
     if (CheckEditInputMapPress(
           cursor,
+          IndexedInput(FILTER_CV, djfilter_cv),
           IndexedInput(LEVEL_CV, level_cv),
           IndexedInput(PLAYRATE_CV, playrate_cv)
     )) return;
@@ -210,7 +220,9 @@ public:
       case FILTER_PARAM:
         filter_on = true;
         djfilter = constrain(djfilter + direction, -63, 63);
-        SetFilter(djfilter);
+        break;
+      case FILTER_CV:
+        djfilter_cv.ChangeSource(direction);
         break;
       case LEVEL:
         level = constrain(level + direction, -90, 90);
@@ -233,11 +245,12 @@ public:
   uint64_t OnDataRequest() {
     // STOP playback to avoid SD card hangup on preset save
     wavplayer[0].stop();
+    // TODO: djfilter_cv (16bits)
     return PackPackables(level, level_cv, playrate, playrate_cv, wavplayer_select[0], djfilter);
   }
   void OnDataReceive(uint64_t data) {
+    // TODO: djfilter_cv (16bits)
     UnpackPackables(data, level, level_cv, playrate, playrate_cv, wavplayer_select[0], djfilter);
-    SetFilter(djfilter * filter_on);
     ChangeToFile(0, wavplayer_select[0]);
   }
 
@@ -256,6 +269,7 @@ private:
     FILE_NUM,
     PLAYSTOP_BUTTON,
     FILTER_PARAM,
+    FILTER_CV,
     LEVEL,
     LEVEL_CV,
     PLAYRATE,
@@ -270,7 +284,9 @@ private:
 
   int cursor = 0;
   int8_t level = -3; // dB
-  int8_t djfilter = 0; // as a percent - positive is hi-pass, negative low-pass
+  int8_t djfilter = 0; // positive is hi-pass, negative low-pass
+  int8_t djfilter_mod = 0; // for display
+  CVInputMap djfilter_cv;
   bool lowcut = false;
   bool filter_on = false;
   CVInputMap level_cv;
@@ -290,10 +306,12 @@ private:
 
   AudioConnection          patchCordWav1L{wavplayer[0], 0, hpfilter[0], 0};
   AudioConnection          patchCordWav1R{wavplayer[0], 1, hpfilter[1], 0};
-  AudioConnection          patchCordWavHPF1L{hpfilter[0], 2, mixer[0], 0};
-  AudioConnection          patchCordWavHPF1R{hpfilter[1], 2, mixer[1], 0};
-  AudioConnection          patchCordWavLPF2L{hpfilter[0], 0, mixer[0], 1};
-  AudioConnection          patchCordWavLPF2R{hpfilter[1], 0, mixer[1], 1};
+  AudioConnection          patchCordWav1Ldry{wavplayer[0], 0, mixer[0], 0};
+  AudioConnection          patchCordWav1Rdry{wavplayer[0], 1, mixer[1], 0};
+  AudioConnection          patchCordWavHPF1L{hpfilter[0], 2, mixer[0], 1};
+  AudioConnection          patchCordWavHPF1R{hpfilter[1], 2, mixer[1], 1};
+  AudioConnection          patchCordWavLPF2L{hpfilter[0], 0, mixer[0], 2};
+  AudioConnection          patchCordWavLPF2R{hpfilter[1], 0, mixer[1], 2};
 
   // SD player vars, copied from other dev branch
   bool wavplayer_reload[2] = {true, true};
@@ -350,34 +368,25 @@ private:
   }
 
   static constexpr int FILTER_MAX = (60 << 7); // 5V ~ 14.4khz
-  void FileLPF(int cv) {
-    float freq = (FILTER_MAX - abs(cv)) / 64;
-    freq *= freq;
-    mixer[0].gain(0, 0.0); // HPF off
-    mixer[0].gain(1, 1.0); // LPF on
-    mixer[1].gain(0, 0.0);
-    mixer[1].gain(1, 1.0);
-
-    hpfilter[0].frequency(freq);
-    hpfilter[1].frequency(freq);
-  }
-  void FileHPF(int cv) {
-    float freq = abs(cv) / 64;
-    freq *= freq;
-    mixer[0].gain(0, 1.0); // HPF on
-    mixer[0].gain(1, 0.0); // LPF off
-    mixer[1].gain(0, 1.0);
-    mixer[1].gain(1, 0.0);
-
-    hpfilter[0].frequency(freq);
-    hpfilter[1].frequency(freq);
-  }
   void SetFilter(int scalar) {
     lowcut = (scalar < 0);
+    if (scalar < 2 && scalar > -2) {
+      for (int ch = 0; ch < Channels; ++ch) {
+        hpfilter[ch].frequency(0);
+      }
+      return;
+    }
+
+    float freq = scalar * FILTER_MAX / 64;
     if (lowcut)
-      FileLPF(scalar * FILTER_MAX / 64);
+      freq = (FILTER_MAX - abs(freq)) / 64;
     else
-      FileHPF(scalar * FILTER_MAX / 64);
+      freq = abs(freq) / 64;
+    freq *= freq;
+
+    for (int ch = 0; ch < Channels; ++ch) {
+      hpfilter[ch].frequency(freq);
+    }
   }
 
   // simple hooks for beat-sync callbacks
@@ -410,10 +419,12 @@ private:
     );
   }
   void FileLevel(float lvl) {
-    mixer[0].gain(0, lvl * (1-lowcut));
-    mixer[1].gain(0, lvl * (1-lowcut));
-    mixer[0].gain(1, lvl * lowcut);
-    mixer[1].gain(1, lvl * lowcut);
+    bool dry = (djfilter_mod < 2 && djfilter_mod > -2);
+    for (int ch = 0; ch < Channels; ++ch) {
+      mixer[ch].gain(0, lvl * dry);
+      mixer[ch].gain(1, lvl * (1-lowcut) * (1-dry));
+      mixer[ch].gain(2, lvl * lowcut * (1-dry));
+    }
   }
   void FileRate(float rate) {
     // bipolar CV has +/- 50% pitch bend
