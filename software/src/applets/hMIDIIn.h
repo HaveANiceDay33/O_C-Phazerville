@@ -49,16 +49,17 @@ public:
 
     void Start() {
         // int v = 2 * hemisphere;
+        map_index[0] = io_offset;
+        map_index[1] = io_offset + 1;
         ForEachChannel(ch) {
             MIDIMapping &map = frame.MIDIState.mapping[map_index[ch]];
-            map.channel = 0; // Default channel 1
-            map.function = 0; // (ch % 2) ? HEM_MIDI_GATE_POLY_OUT : HEM_MIDI_NOTE_POLY_OUT;
             map.output = 0;
-            map.dac_polyvoice = 0; // hemisphere;
             Out(ch, 0);
         }
-
         frame.MIDIState.log_index = 0;
+    }
+
+    void Reset() {
         frame.MIDIState.clock_count = 0;
 
         frame.MIDIState.ClearMonoBuffer();
@@ -194,7 +195,7 @@ protected:
 private:
     // Housekeeping
     int cursor;
-    int map_index[2] = {io_offset+0, io_offset+1};
+    int map_index[2] = {0, 1};
     int io_page = 0;
     int last_icon_ticks[2];
 
