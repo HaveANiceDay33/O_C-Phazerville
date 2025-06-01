@@ -18,8 +18,8 @@ namespace HS {
 
 static constexpr int GATE_THRESHOLD = 15 << 7; // 1.25 volts
 static constexpr int MIDIMAP_MAX = 32;
-static constexpr int TRIGMAP_MAX = OC::DIGITAL_INPUT_LAST + ADC_CHANNEL_LAST + DAC_CHANNEL_LAST + MIDIMAP_MAX;
-static constexpr int CVMAP_MAX = ADC_CHANNEL_LAST + DAC_CHANNEL_LAST + MIDIMAP_MAX;
+static constexpr int TRIGMAP_MAX = OC::DIGITAL_INPUT_LAST + ADC_CHANNEL_COUNT + DAC_CHANNEL_COUNT + MIDIMAP_MAX;
+static constexpr int CVMAP_MAX = ADC_CHANNEL_COUNT + DAC_CHANNEL_COUNT + MIDIMAP_MAX;
 
 struct MIDILogEntry {
     uint8_t message;
@@ -82,7 +82,7 @@ struct MIDIFrame {
     uint8_t pc_channel = 0; // program change channel filter, used for preset selection
     static constexpr uint8_t PC_OMNI = 0;
 
-    PolyphonyData poly_buffer[DAC_CHANNEL_LAST]; // buffer for polyphonic data tracking
+    PolyphonyData poly_buffer[DAC_CHANNEL_COUNT]; // buffer for polyphonic data tracking
     uint8_t max_voice = 1;
     int poly_mode = 0;
     int8_t poly_rotate_index = -1;
@@ -178,7 +178,7 @@ struct MIDIFrame {
     }
 
     void ClearPolyBuffer() {
-        for (int ch = 0; ch < DAC_CHANNEL_LAST; ++ch) {
+        for (int ch = 0; ch < DAC_CHANNEL_COUNT; ++ch) {
             ClearPolyVoice(ch);
         }
     }
@@ -275,19 +275,19 @@ struct MIDIFrame {
     uint32_t last_msg_tick; // Tick of last received message
 
     // MIDI output stuff
-    int outchan[DAC_CHANNEL_LAST] = {
+    int outchan[DAC_CHANNEL_COUNT] = {
         0, 0, 1, 1,
 #ifdef ARDUINO_TEENSY41
         2, 2, 3, 3,
 #endif
     };
-    int outchan_last[DAC_CHANNEL_LAST] = {
+    int outchan_last[DAC_CHANNEL_COUNT] = {
         0, 0, 1, 1,
 #ifdef ARDUINO_TEENSY41
         2, 2, 3, 3,
 #endif
     };
-    int outfn[DAC_CHANNEL_LAST] = {
+    int outfn[DAC_CHANNEL_COUNT] = {
         HEM_MIDI_NOTE_OUT, HEM_MIDI_GATE_OUT,
         HEM_MIDI_NOTE_OUT, HEM_MIDI_GATE_OUT,
 #ifdef ARDUINO_TEENSY41
@@ -295,20 +295,20 @@ struct MIDIFrame {
         HEM_MIDI_NOTE_OUT, HEM_MIDI_GATE_OUT,
 #endif
     };
-    uint8_t outccnum[DAC_CHANNEL_LAST] = {
+    uint8_t outccnum[DAC_CHANNEL_COUNT] = {
         1, 1, 1, 1,
 #ifdef ARDUINO_TEENSY41
         5, 6, 7, 8,
 #endif
     };
     uint8_t current_note[16]; // note number, per MIDI channel
-    uint8_t current_ccval[DAC_CHANNEL_LAST]; // level 0 - 127, per DAC channel
-    int note_countdown[DAC_CHANNEL_LAST];
-    int inputs[DAC_CHANNEL_LAST]; // CV to be translated
-    int last_cv[DAC_CHANNEL_LAST];
-    bool clocked[DAC_CHANNEL_LAST];
-    bool gate_high[DAC_CHANNEL_LAST];
-    bool changed_cv[DAC_CHANNEL_LAST];
+    uint8_t current_ccval[DAC_CHANNEL_COUNT]; // level 0 - 127, per DAC channel
+    int note_countdown[DAC_CHANNEL_COUNT];
+    int inputs[DAC_CHANNEL_COUNT]; // CV to be translated
+    int last_cv[DAC_CHANNEL_COUNT];
+    bool clocked[DAC_CHANNEL_COUNT];
+    bool gate_high[DAC_CHANNEL_COUNT];
+    bool changed_cv[DAC_CHANNEL_COUNT];
 
     // Logging
     MIDILogEntry log[7];
@@ -572,7 +572,7 @@ struct MIDIFrame {
 
     void Send(const int *outvals) {
         // first pass - calculate things and turn off notes
-        for (int i = 0; i < DAC_CHANNEL_LAST; ++i) {
+        for (int i = 0; i < DAC_CHANNEL_COUNT; ++i) {
             const uint8_t midi_ch = outchan[i];
 
             inputs[i] = outvals[i];
@@ -684,26 +684,26 @@ struct MIDIFrame {
 struct IOFrame {
     // settings
     bool autoMIDIOut = false;
-    uint8_t clockskip[DAC_CHANNEL_LAST] = {0};
+    uint8_t clockskip[DAC_CHANNEL_COUNT] = {0};
 
     // pre-calculated clocks, subject to trigger mapping
-    bool clocked[OC::DIGITAL_INPUT_LAST + ADC_CHANNEL_LAST];
+    bool clocked[OC::DIGITAL_INPUT_LAST + ADC_CHANNEL_COUNT];
 
     // physical input state cache
-    bool gate_high[OC::DIGITAL_INPUT_LAST + ADC_CHANNEL_LAST];
-    int inputs[ADC_CHANNEL_LAST];
+    bool gate_high[OC::DIGITAL_INPUT_LAST + ADC_CHANNEL_COUNT];
+    int inputs[ADC_CHANNEL_COUNT];
 
     // output value cache, countdowns
-    int outputs[DAC_CHANNEL_LAST];
-    int output_diff[DAC_CHANNEL_LAST];
-    int outputs_smooth[DAC_CHANNEL_LAST];
-    int clock_countdown[DAC_CHANNEL_LAST];
-    int adc_lag_countdown[ADC_CHANNEL_LAST]; // Time between a clock event and an ADC read event
+    int outputs[DAC_CHANNEL_COUNT];
+    int output_diff[DAC_CHANNEL_COUNT];
+    int outputs_smooth[DAC_CHANNEL_COUNT];
+    int clock_countdown[DAC_CHANNEL_COUNT];
+    int adc_lag_countdown[ADC_CHANNEL_COUNT]; // Time between a clock event and an ADC read event
     // calculated values
-    uint32_t last_clock[ADC_CHANNEL_LAST]; // Tick number of the last clock observed by the child class
-    uint32_t cycle_ticks[ADC_CHANNEL_LAST]; // Number of ticks between last two clocks
-    bool changed_cv[ADC_CHANNEL_LAST]; // Has the input changed by more than 1/8 semitone since the last read?
-    int last_cv[ADC_CHANNEL_LAST]; // For change detection
+    uint32_t last_clock[ADC_CHANNEL_COUNT]; // Tick number of the last clock observed by the child class
+    uint32_t cycle_ticks[ADC_CHANNEL_COUNT]; // Number of ticks between last two clocks
+    bool changed_cv[ADC_CHANNEL_COUNT]; // Has the input changed by more than 1/8 semitone since the last read?
+    int last_cv[ADC_CHANNEL_COUNT]; // For change detection
 
     /* MIDI message queue/cache */
     MIDIFrame MIDIState;
@@ -728,13 +728,13 @@ struct IOFrame {
     void Load();
 
     void Send() {
-        const DAC_CHANNEL chan[DAC_CHANNEL_LAST] = {
+        const DAC_CHANNEL chan[DAC_CHANNEL_COUNT] = {
           DAC_CHANNEL_A, DAC_CHANNEL_B, DAC_CHANNEL_C, DAC_CHANNEL_D,
 #ifdef ARDUINO_TEENSY41
           DAC_CHANNEL_E, DAC_CHANNEL_F, DAC_CHANNEL_G, DAC_CHANNEL_H,
 #endif
         };
-        for (int i = 0; i < DAC_CHANNEL_LAST; ++i) {
+        for (int i = 0; i < DAC_CHANNEL_COUNT; ++i) {
             OC::DAC::set_pitch_scaled(chan[i], outputs[i], 0);
         }
         if (autoMIDIOut) MIDIState.Send(outputs);
