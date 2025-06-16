@@ -16,9 +16,6 @@ using ADC_CHANNEL = int;
 extern ADC_CHANNEL ADC_CHANNEL_1, ADC_CHANNEL_2, ADC_CHANNEL_3, ADC_CHANNEL_4;
 #if defined(__IMXRT1062__) && defined(ARDUINO_TEENSY41)
 extern ADC_CHANNEL ADC_CHANNEL_5, ADC_CHANNEL_6, ADC_CHANNEL_7, ADC_CHANNEL_8;
-static constexpr int ADC_CHANNEL_COUNT = 8;
-#else
-static constexpr int ADC_CHANNEL_COUNT = 4;
 #endif
 
 static constexpr int ADC_CHANNEL_LAST = ADC_CHANNEL_COUNT;

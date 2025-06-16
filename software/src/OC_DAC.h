@@ -28,9 +28,6 @@ using DAC_CHANNEL = int;
 extern DAC_CHANNEL DAC_CHANNEL_A, DAC_CHANNEL_B, DAC_CHANNEL_C, DAC_CHANNEL_D;
 #if defined(__IMXRT1062__) && defined(ARDUINO_TEENSY41)
 extern DAC_CHANNEL DAC_CHANNEL_E, DAC_CHANNEL_F, DAC_CHANNEL_G, DAC_CHANNEL_H;
-static constexpr int DAC_CHANNEL_COUNT = 8;
-#else
-static constexpr int DAC_CHANNEL_COUNT = 4;
 #endif
 
 // backward compat [deprecated]

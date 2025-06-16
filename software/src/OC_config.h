@@ -5,6 +5,17 @@
 #error "Please compile O&C firmware for Teensy 3.2 with CPU speed 120MHz"
 #endif
 
+// --- Hardware details --- //
+static constexpr int DIGITAL_INPUT_COUNT = 4;
+#if defined(__IMXRT1062__) && defined(ARDUINO_TEENSY41)
+static constexpr int DAC_CHANNEL_COUNT = 8;
+static constexpr int ADC_CHANNEL_COUNT = 8;
+#else
+static constexpr int DAC_CHANNEL_COUNT = 4;
+static constexpr int ADC_CHANNEL_COUNT = 4;
+#endif
+
+// --- Timing --- //
 // 60us = 16.666...kHz : Works, SPI transfer ends 2uS before next ISR
 // 66us = 15.1515...kHz
 // 72us = 13.888...kHz
