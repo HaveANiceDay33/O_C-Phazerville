@@ -124,18 +124,18 @@ public:
     void DrawConfigHelp() {
         for (int i=0; i<HELP_LABEL_COUNT; ++i) help[i] = "";
         SetHelp();
-        const bool clockrun = HS::clock_m.IsRunning();
+        const bool clockrun = clock_m.IsRunning();
 
         for (int ch = 0; ch < 2; ++ch) {
           int y = 14;
-          const int mult = clockrun ? HS::clock_m.GetMultiply(ch + io_offset) : 0;
+          const int mult = clockrun ? clock_m.GetMultiply(ch + io_offset) : 0;
 
           graphics.setPrintPos(ch*64, y);
           if (mult != 0) { // Multipliers
             graphics.print( (mult > 0) ? "x" : "/" );
             graphics.print( (mult > 0) ? mult : 1 - mult );
           } else { // Trigger mapping
-            graphics.print( HS::trigmap[ch + io_offset].InputName() );
+            graphics.print( trigmap[ch + io_offset].InputName() );
           }
           graphics.invertRect(ch*64, y - 1, 19, 9);
 

@@ -1,9 +1,7 @@
 #pragma once
+// -- This entire header is meant to be included once in HSIOFrame.h
 
-#include "HemisphereApplet.h"
-#include "PackingUtils.h"
-
-const int NUM_CV_INPUTS = HS::CVMAP_MAX + 1;
+const int NUM_CV_INPUTS = CVMAP_MAX + 1;
 //const int NUM_CV_INPUTS = ADC_CHANNEL_LAST * 2 + 1;
 // We *could* reuse HS::input_quant for inputs, but easier to just do it
 // independently, and semitone quantizers are lightwieght.
@@ -23,10 +21,10 @@ struct CVInputMap {
   }
   int RawIn() {
     return source <= ADC_CHANNEL_LAST
-      ? HS::frame.inputs[source - 1]
+      ? frame.inputs[source - 1]
       : (source - ADC_CHANNEL_LAST <= DAC_CHANNEL_LAST)
-        ? HS::frame.outputs[source - 1 - ADC_CHANNEL_LAST]
-        : HS::frame.MIDIState.mapping[source - ADC_CHANNEL_LAST - DAC_CHANNEL_LAST - 1].output;
+        ? frame.outputs[source - 1 - ADC_CHANNEL_LAST]
+        : frame.MIDIState.mapping[source - ADC_CHANNEL_LAST - DAC_CHANNEL_LAST - 1].output;
   }
 
   int In(int default_value = 0) {
@@ -99,7 +97,7 @@ struct DigitalInputMap {
   bool last_gate_state = true; // for detecting clocks
   static const int ppqn = 4;
   static constexpr float internal_clocked_gate_pw = 0.5f;
-  static const int num_sources = HS::TRIGMAP_MAX;
+  static const int num_sources = TRIGMAP_MAX;
 
   static constexpr size_t Size = 16; // Make this compatible with Packable
 
@@ -110,24 +108,24 @@ struct DigitalInputMap {
   bool Gate() {
     switch (source_type()) {
       case CLOCK: {
-        if (!HS::clock_m.IsRunning()) return false;
-        uint32_t ticks_since_beat = OC::CORE::ticks - HS::clock_m.beat_tick;
+        if (!clock_m.IsRunning()) return false;
+        uint32_t ticks_since_beat = OC::CORE::ticks - clock_m.beat_tick;
         // TODO: implement division for ticks_per_beat
         uint32_t tick_phase
-          = (ppqn * ticks_since_beat) % HS::clock_m.ticks_per_beat;
+          = (ppqn * ticks_since_beat) % clock_m.ticks_per_beat;
         bool gate
-          = tick_phase < internal_clocked_gate_pw * HS::clock_m.ticks_per_beat;
+          = tick_phase < internal_clocked_gate_pw * clock_m.ticks_per_beat;
         return gate;
       }
       case DIGITAL_INPUT:
       case CV_INPUT:
-        return HS::frame.gate_high[digital_input_index()];
+        return frame.gate_high[digital_input_index()];
         // gate_high is already calculated for ADC
-        //return HS::frame.inputs[cv_input_index()] > HS::GATE_THRESHOLD;
+        //return frame.inputs[cv_input_index()] > GATE_THRESHOLD;
       case CV_OUTPUT:
-        return HS::frame.outputs[cv_output_index()] > HS::GATE_THRESHOLD;
+        return frame.outputs[cv_output_index()] > GATE_THRESHOLD;
       case MIDI_MAP:
-        return HS::frame.MIDIState.mapping[midi_map_index()].output > HS::GATE_THRESHOLD;
+        return frame.MIDIState.mapping[midi_map_index()].output > GATE_THRESHOLD;
       case NONE:
       default:
         return false;
@@ -148,7 +146,7 @@ struct DigitalInputMap {
   uint8_t const* Icon() const {
     switch (source_type()) {
       case CLOCK:
-        return HS::clock_m.cycle ? METRO_L_ICON : METRO_R_ICON;
+        return clock_m.cycle ? METRO_L_ICON : METRO_R_ICON;
       case DIGITAL_INPUT:
         return DIGITAL_INPUT_ICONS + digital_input_index() * 8;
       case CV_INPUT:
@@ -219,7 +217,5 @@ constexpr DigitalInputMap& pack(DigitalInputMap& input) {
   return input;
 }
 
-namespace HS {
-  extern DigitalInputMap trigmap[ADC_CHANNEL_LAST];
-  extern CVInputMap cvmap[ADC_CHANNEL_LAST];
-}
+extern DigitalInputMap trigmap[ADC_CHANNEL_LAST];
+extern CVInputMap cvmap[ADC_CHANNEL_LAST];

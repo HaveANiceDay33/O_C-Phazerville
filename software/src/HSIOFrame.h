@@ -13,6 +13,10 @@
 #include "HSMIDI.h"
 #include "HSUtils.h"
 #include "OC_DAC.h"
+#include "OC_ADC.h"
+#include "OC_digital_inputs.h"
+#include "HSicons.h"
+#include "HSClockManager.h"
 
 namespace HS {
 
@@ -714,7 +718,7 @@ struct MIDIFrame {
             } else if (outfn[chA] == HEM_MIDI_NOTE_OUT) {
                 if (changed_cv[chA]) {
                     SendNoteOn(outchan[chA]);
-                    note_countdown[chA] = HEMISPHERE_CLOCK_TICKS * HS::trig_length;
+                    note_countdown[chA] = HEMISPHERE_CLOCK_TICKS * trig_length;
                     outchan_last[chA] = outchan[chA];
                 }
             }
@@ -804,7 +808,7 @@ struct IOFrame {
         output_diff[channel] += value - outputs[channel];
         outputs[channel] = value;
     }
-    void ClockOut(DAC_CHANNEL ch, const int pulselength = HEMISPHERE_CLOCK_TICKS * HS::trig_length) {
+    void ClockOut(DAC_CHANNEL ch, const int pulselength = HEMISPHERE_CLOCK_TICKS * trig_length) {
         // short circuit if skip probability is zero to avoid consuming random numbers
         if (0 == clockskip[ch] || random(100) >= clockskip[ch]) {
             clock_countdown[ch] = pulselength;

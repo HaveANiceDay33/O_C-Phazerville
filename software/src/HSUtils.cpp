@@ -1,9 +1,9 @@
 #include <Arduino.h>
 #include "OC_core.h"
-#include "HemisphereApplet.h"
 #include "tideslite.h"
 #include "OC_gpio.h"
 #include "HSUtils.h"
+#include "HSIOFrame.h"
 
 #ifdef ARDUINO_TEENSY41
 #include "SD.h"
