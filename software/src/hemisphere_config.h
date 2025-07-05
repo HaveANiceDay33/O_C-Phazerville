@@ -61,6 +61,7 @@
 #include "applets/Logic.h"
 #include "applets/LowerRenz.h"
 #include "applets/Metronome.h"
+#include "applets/MidiLoop.h"
 #include "applets/MixerBal.h"
 #include "applets/MultiScale.h"
 #include "applets/Palimpsest.h"
@@ -177,6 +178,7 @@ AppletRegistry reg{
     DeclareApplet<Logic>{10, 0x44},
     DeclareApplet<LowerRenz>{21, 0x01},
     DeclareApplet<Metronome>{50, 0x04},
+    DeclareApplet<MidiLoop>{81, 0x20},
     DeclareApplet<hMIDIIn>{150, 0x20},
     DeclareApplet<hMIDIOut>{27, 0x20},
     DeclareApplet<MixerBal>{33, 0x10},
