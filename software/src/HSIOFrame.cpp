@@ -244,7 +244,7 @@ void HS::MIDIFrame::ProcessMIDIMsg(const MIDIMessage msg) {
                 break;
             }
         }
-        if (log_this) UpdateLog(msg.message, msg.data1, msg.data2);
+        if (log_this) UpdateLog(msg);
     }
 }
 
