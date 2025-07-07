@@ -155,11 +155,11 @@ public:
         if (NorthernLightModular && In(ch) < HEMISPHERE_CENTER_DETENT)
           return 0;
 
-        if (In(ch) > (HEMISPHERE_CENTER_CV + HEMISPHERE_CENTER_DETENT)
-          || In(ch) < (HEMISPHERE_CENTER_CV - HEMISPHERE_CENTER_DETENT))
+        if (In(ch) > (HEMISPHERE_CENTER_INPUT_CV + HEMISPHERE_CENTER_DETENT)
+          || In(ch) < (HEMISPHERE_CENTER_INPUT_CV - HEMISPHERE_CENTER_DETENT))
           return In(ch);
 
-        return HEMISPHERE_CENTER_CV;
+        return HEMISPHERE_CENTER_INPUT_CV;
     }
     int SemitoneIn(int ch) {
       return input_quant[ch].Process(In(ch));

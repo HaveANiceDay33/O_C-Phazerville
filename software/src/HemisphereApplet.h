@@ -156,11 +156,11 @@ public:
         if (NorthernLightModular && In(ch) < HEMISPHERE_CENTER_DETENT)
           return 0;
 
-        if (In(ch) > (HEMISPHERE_CENTER_CV + HEMISPHERE_CENTER_DETENT)
-          || In(ch) < (HEMISPHERE_CENTER_CV - HEMISPHERE_CENTER_DETENT))
+        if (In(ch) > (HEMISPHERE_CENTER_INPUT_CV + HEMISPHERE_CENTER_DETENT)
+          || In(ch) < (HEMISPHERE_CENTER_INPUT_CV - HEMISPHERE_CENTER_DETENT))
           return In(ch);
 
-        return HEMISPHERE_CENTER_CV;
+        return HEMISPHERE_CENTER_INPUT_CV;
     }
     int SemitoneIn(int ch) {
       return input_quant[ch + io_offset].Process(In(ch));
@@ -240,8 +240,8 @@ public:
 
     // Override HSUtils function to only return positive values
     // Not ideal, but too many applets rely on this.
-    const int ProportionCV(const int cv_value, const int max_pixels) {
-        int prop = constrain(Proportion(cv_value, HEMISPHERE_MAX_INPUT_CV, max_pixels), 0, max_pixels);
+    const int ProportionCV(const int cv_value, const int max_pixels, const int max_cv = HEMISPHERE_MAX_CV) {
+        int prop = constrain(Proportion(cv_value, max_cv, max_pixels), 0, max_pixels);
         return prop;
     }
 
