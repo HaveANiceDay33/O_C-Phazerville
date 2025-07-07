@@ -52,7 +52,11 @@ public:
   static constexpr size_t kHistoryDepth = 8;
   static constexpr uint16_t MAX_VALUE = 65535; // DAC fullscale 
 
+#ifdef NORTHERNLIGHT
+  static constexpr int kOctaveZero = 0;
+#else
   static int kOctaveZero;
+#endif
   #if defined(VOR)
     static constexpr int VBiasUnipolar = 3900;   // onboard DAC @ Vref 1.2V (internal), 1.75x gain
     static constexpr int VBiasBipolar = 2000;    // onboard DAC @ Vref 1.2V (internal), 1.75x gain

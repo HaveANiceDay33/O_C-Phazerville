@@ -26,9 +26,7 @@ namespace HS {
   int next_ch = -1;
   int8_t next_octave, next_root_note;
 
-#ifdef NORTHERNLIGHT
-  int octave_max = 10;
-#else
+#ifndef NORTHERNLIGHT
   int octave_max = 6;
 #endif
 

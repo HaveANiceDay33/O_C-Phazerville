@@ -271,7 +271,11 @@ namespace HS {
 
   extern QuantEngine q_engine[QUANT_CHANNEL_COUNT];
 
+#ifdef NORTHERNLIGHT
+  static constexpr int octave_max = 10;
+#else
   extern int octave_max;
+#endif
 
   extern int select_mode;
   extern bool cursor_wrap;

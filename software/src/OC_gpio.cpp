@@ -171,10 +171,10 @@ void OC::Pinout_Detect() {
 
 #ifndef NORTHERNLIGHT
   NorthernLightModular = NorthernLightModular || (id_voltage >= 0.45f);
-#endif
   if (NorthernLightModular) {
     DAC::kOctaveZero = 0;
     HS::octave_max = 10;
   }
+#endif
 
 }
