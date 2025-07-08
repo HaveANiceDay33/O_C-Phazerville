@@ -121,13 +121,14 @@ public:
                     level_mod / 1000);
         break;
       case BIPOLAR:
-        // hardcoded at 5 octaves (10Vpp) max amplitude
-        Out(ch, (Proportion(sample.bipolar, 32767, HEMISPHERE_MAX_CV)
-              * level_mod / 1000) / (2 - (OC::DAC::kOctaveZero>0))
-              + HEMISPHERE_CENTER_CV
-          );
+      {
+        int outcv = Proportion(sample.bipolar, 32767, HEMISPHERE_MAX_CV) * level_mod / 1000;
+        if (OC::DAC::kOctaveZero == 0)
+            outcv = outcv / 2 + HEMISPHERE_CENTER_CV;
+        Out(ch, outcv);
 
         break;
+      }
       case EOA:
         GateOut(ch, eoa_reached);
         break;
