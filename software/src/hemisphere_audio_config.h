@@ -1,333 +1,77 @@
-#include "HSUtils.h"
-#include "HemisphereAudioApplet.h"
-#include "dsputils.h"
-#include "dsputils_arm.h"
-#include "synth_waveform.h"
-#include "Audio/AudioMixer.h"
-#include "Audio/AudioPassthrough.h"
-#include "Audio/InterpolatingStream.h"
-#include <Audio.h>
+#pragma once
 
-class HandSawApplet : public HemisphereAudioApplet {
-    public: 
-        const char* applet_name() override {
-            return "HandSaw";
-        }
-        void Start() override {
-            
-        }
-        void Unload() override {
-            AllowRestart();
-        }
-        
-        void Controller() override {
-            float detuneValue = detune + (detune_cv.In() * 0.01f);
-            float phaseValue = phase + (phase_cv.In() * 0.01f);
+#include "AudioAppletSubapp.h"
+#include "audio_applets/CrosspanApplet.h"
+#include "audio_applets/DelayApplet.h"
+#include "audio_applets/DynamicsApplet.h"
+#include "audio_applets/FilterFolderApplet.h"
+#include "audio_applets/InputApplet.h"
+#include "audio_applets/LadderApplet.h"
+#include "audio_applets/MidSideApplet.h"
+#include "audio_applets/OscApplet.h"
+#include "audio_applets/PassthruApplet.h"
+#include "audio_applets/UpsampledApplet.h"
+#include "audio_applets/VCAApplet.h"
+#include "audio_applets/WAVPlayerApplet.h"
+#include "audio_applets/HandSawApplet.h"
 
-            float freq1 = PitchToRatio(pitch1 + pitch_cv1.In()) * C3;
-            // set the first 3 oscillators to freq1
-            synth1.frequency(freq1);
-            synth2.frequency(freq1 + (3 * detuneValue / detuneFactor));
-            synth3.frequency(freq1 - (2 * detuneValue / detuneFactor));
-            synth1.phase(phaseValue);
-            synth2.phase((3 * phaseValue / phaseFactor));
-            synth3.phase((2 * phaseValue / phaseFactor));
-            synth1.amplitude(1.0f);
-            synth2.amplitude(1.0f);
-            synth3.amplitude(1.0f);
+const size_t NUM_SLOTS = 5;
 
-            float freq2 = PitchToRatio(pitch2 + pitch_cv2.In()) * C3;
-            // set the next 3 oscillators to freq2
-            synth4.frequency(freq2 + (detuneValue / detuneFactor));
-            synth5.frequency(freq2 + (4 * detuneValue / detuneFactor));
-            synth6.frequency(freq2 - (5 * detuneValue / detuneFactor));
-            synth4.phase(phaseValue);
-            synth5.phase((4 * phaseValue / phaseFactor));
-            synth6.phase((5 * phaseValue / phaseFactor));
-            synth4.amplitude(1.0f);
-            synth5.amplitude(1.0f);
-            synth6.amplitude(1.0f);
+DMAMEM std::tuple<InputApplet<MONO>, UpsampledApplet<MONO>, OscApplet, HandSawApplet, WavPlayerApplet<MONO>>
+  mono_input_pool[2];
+DMAMEM std::
+  tuple<InputApplet<STEREO>, WavPlayerApplet<STEREO>, UpsampledApplet<STEREO>>
+    stereo_input_pool;
+DMAMEM std::tuple<
+  PassthruApplet<MONO>,
+  DynamicsApplet<MONO>,
+  InputApplet<MONO>,
+  OscApplet,
+  DelayApplet<MONO>,
+  LadderApplet<MONO>,
+  FilterFolderApplet<MONO>,
+  WavPlayerApplet<MONO>,
+  VcaApplet<MONO>,
+  UpsampledApplet<MONO>>
+  mono_processors_pool[2][NUM_SLOTS - 1];
+DMAMEM std::tuple<
+  PassthruApplet<STEREO>,
+  CrosspanApplet,
+  MidSideApplet,
+  DynamicsApplet<STEREO>,
+  InputApplet<STEREO>,
+  DelayApplet<STEREO>,
+  LadderApplet<STEREO>,
+  VcaApplet<STEREO>,
+  FilterFolderApplet<STEREO>,
+  WavPlayerApplet<STEREO>,
+  UpsampledApplet<STEREO>>
+  stereo_processors_pool[NUM_SLOTS - 1];
 
-            float freq3 = PitchToRatio(pitch3 + pitch_cv3.In()) * C3;
-            // set the last 3 oscillators to freq3
-            synth7.frequency(freq3 - (detuneValue / detuneFactor));
-            synth8.frequency(freq3 + (2 * detuneValue / detuneFactor));
-            synth9.frequency(freq3 - (3 * detuneValue / detuneFactor));
-            synth7.phase(phaseValue);
-            synth8.phase((2 * phaseValue / phaseFactor));
-            synth9.phase((3 * phaseValue / phaseFactor));
-            synth7.amplitude(1.0f);
-            synth8.amplitude(1.0f);
-            synth9.amplitude(1.0f);
+// Helper to extract the tuple type from an array... thanks ChatGPT...
+template <typename ArrayType>
+using Unwrap = typename std::remove_reference<
+  typename std::remove_extent<ArrayType>::type>::type;
 
-            float freq4 = PitchToRatio(pitch4 + pitch_cv4.In()) * C3;
-            // set the last 3 oscillators to freq4
-            synth10.frequency(freq4 + (6 * detuneValue / detuneFactor));
-            synth11.frequency(freq4 + (5 * detuneValue / detuneFactor));
-            synth12.frequency(freq4 - (4 * detuneValue / detuneFactor));
-            synth10.phase((6 * phaseValue / phaseFactor));
-            synth11.phase((5 * phaseValue / phaseFactor));
-            synth12.phase((4 * phaseValue / phaseFactor));
-            synth10.amplitude(1.0f);
-            synth11.amplitude(1.0f);
-            synth12.amplitude(1.0f);
+// Compute sizes using deduced tuple types
+constexpr size_t MONO_INPUT_POOL_SIZE
+  = std::tuple_size<Unwrap<decltype(mono_input_pool)>>::value;
+constexpr size_t STEREO_INPUT_POOL_SIZE
+  = std::tuple_size<Unwrap<decltype(stereo_input_pool)>>::value;
+constexpr size_t MONO_PROCESSORS_POOL_SIZE
+  = std::tuple_size<Unwrap<Unwrap<decltype(mono_processors_pool)>>>::value;
+constexpr size_t STEREO_PROCESSORS_POOL_SIZE
+  = std::tuple_size<Unwrap<decltype(stereo_processors_pool)>>::value;
 
-            mixer1.gain(0, 0.33f);
-            mixer2.gain(0, 0.33f);
-            mixer3.gain(0, 0.33f);
-            mixer4.gain(0, 0.33f);
-
-            mixer1.gain(1, 0.33f);
-            mixer2.gain(1, 0.33f);
-            mixer3.gain(1, 0.33f);
-            mixer4.gain(1, 0.33f);
-
-            mixer1.gain(2, 0.33f);
-            mixer2.gain(2, 0.33f);
-            mixer3.gain(2, 0.33f);
-            mixer4.gain(2, 0.33f);
-
-            mixer1.gain(3, 0.0f);
-            
-            finalMixer.gain(0, 0.25f);
-            finalMixer.gain(1, 0.25f);
-            finalMixer.gain(2, 0.25f);
-            finalMixer.gain(3, 0.25f);
-        }
-
-        void View() override {
-            
-            gfxStartCursor(1, 15);
-            gfxPrintTuningIndicator(pitch1);
-            gfxPrint(pitch_cv1);
-            gfxEndCursor(cursor == PITCH_CV1, false, pitch_cv1.InputName());
-
-            gfxStartCursor(31, 15);
-            gfxPrintTuningIndicator(pitch2);
-            gfxPrint(pitch_cv2);
-            gfxEndCursor(cursor == PITCH_CV2, false, pitch_cv2.InputName());
-
-            gfxStartCursor(1, 25);
-            gfxPrintTuningIndicator(pitch3);
-            gfxPrint(pitch_cv3);
-            gfxEndCursor(cursor == PITCH_CV3, false, pitch_cv3.InputName());
-
-            gfxStartCursor(31, 25);
-            gfxPrintTuningIndicator(pitch4);
-            gfxPrint(pitch_cv4);
-            gfxEndCursor(cursor == PITCH_CV4, false, pitch_cv4.InputName());
-
-            gfxPrint(1, 35, "Wave: ");
-            gfxStartCursor();
-            gfxPrint(WAVEFORM_NAMES[waveform]);
-            gfxEndCursor(cursor == WAVEFORM);
-
-            gfxPrint(1, 45, "DT: ");
-            gfxStartCursor();
-            graphics.printf("%d", detune);
-            gfxEndCursor(cursor == DETUNE);
-
-            gfxStartCursor();
-            gfxPrint(detune_cv);
-            gfxEndCursor(cursor == DETUNE_CV, false, detune_cv.InputName());
-
-            gfxPrint(1, 55, "P: ");
-            gfxStartCursor();
-            graphics.printf("%d", phase);
-            gfxEndCursor(cursor == PHASE_CV);
-
-            gfxStartCursor();
-            gfxPrint(phase_cv);
-            gfxEndCursor(cursor == PHASE_CV, false, phase_cv.InputName());
-
-            gfxDisplayInputMapEditor();
-        }
-
-    #define SWARM_OSC_PARAMS \
-        pitch1, pitch2, pitch3, pitch4
-
-        void OnDataRequest(std::array<uint64_t, CONFIG_SIZE>& data) override {
-            data[0] = PackPackables(SWARM_OSC_PARAMS);
-            data[1] = PackPackables(pitch_cv1, pitch_cv2, pitch_cv3, pitch_cv4);
-            data[2] = PackPackables(detune_cv, phase_cv);
-            data[3] = PackPackables(waveform, detune, phase);
-        }
-
-        void OnDataReceive(const std::array<uint64_t, CONFIG_SIZE>& data) override {
-            UnpackPackables(data[0], SWARM_OSC_PARAMS);
-            UnpackPackables(data[1], pitch_cv1, pitch_cv2, pitch_cv3, pitch_cv4);
-            UnpackPackables(data[2], detune_cv, phase_cv);
-            UnpackPackables(data[3], waveform, detune, phase);
-
-            SetWaveform(waveform);
-        }
-
-        void OnButtonPress() override {
-            if (CheckEditInputMapPress(cursor,
-                IndexedInput(DETUNE_CV, detune_cv),
-                IndexedInput(PHASE_CV, phase_cv)
-            ))
-            return;
-          CursorToggle();
-        }
-
-        void SetWaveform(int wf) {
-            waveform = constrain(wf, 0, 4);
-            synth1.begin(WAVEFORMS[waveform]);
-            synth2.begin(WAVEFORMS[waveform]);
-            synth3.begin(WAVEFORMS[waveform]);
-            synth4.begin(WAVEFORMS[waveform]);
-            synth5.begin(WAVEFORMS[waveform]);
-            synth6.begin(WAVEFORMS[waveform]);
-            synth7.begin(WAVEFORMS[waveform]);
-            synth8.begin(WAVEFORMS[waveform]);
-            synth9.begin(WAVEFORMS[waveform]);
-            synth10.begin(WAVEFORMS[waveform]);
-            synth11.begin(WAVEFORMS[waveform]);
-            synth12.begin(WAVEFORMS[waveform]);
-        }
-
-        void OnEncoderMove(int direction) override {
-             if (!EditMode()) {
-                MoveCursor(cursor, direction, PHASE_CV);
-                return;
-            }
-            if (EditSelectedInputMap(direction)) return;
-
-            const int max_pitch = 7 * 12 * 128;
-            const int min_pitch = -3 * 12 * 128;
-            switch (cursor) {
-                case PITCH1:
-                    pitch1 = constrain(pitch1 + direction * 4, min_pitch, max_pitch);
-                    break;
-                case PITCH_CV1:
-                    pitch_cv1.ChangeSource(direction);
-                    break;
-                case PITCH2:
-                    pitch2 = constrain(pitch2 + direction * 4, min_pitch, max_pitch);
-                    break;
-                case PITCH_CV2:
-                    pitch_cv2.ChangeSource(direction);
-                    break;
-                case PITCH3:
-                    pitch3 = constrain(pitch3 + direction * 4, min_pitch, max_pitch);
-                    break;
-                case PITCH_CV3:
-                    pitch_cv3.ChangeSource(direction);
-                    break;
-                case PITCH4:
-                    pitch4 = constrain(pitch4 + direction * 4, min_pitch, max_pitch);
-                    break;
-                case PITCH_CV4:
-                    pitch_cv4.ChangeSource(direction);
-                    break;
-                case WAVEFORM:
-                    SetWaveform(waveform + direction);
-                    break;
-                case DETUNE:
-                    detune = constrain(detune + direction, -2000, 2000);
-                    break;
-                case DETUNE_CV:
-                    detune_cv.ChangeSource(direction);
-                    break; 
-                case PHASE:
-                    phase = constrain(phase + direction, 0, 360);
-                    break;
-                case PHASE_CV:
-                    phase_cv.ChangeSource(direction);
-                    break;
-
-                default:
-                    break;
-            }
-        }
-
-        AudioStream* InputStream() override {
-            return &input_stream;
-        }
-        AudioStream* OutputStream() override {
-            return &finalMixer;
-        }
-    protected:
-        void SetHelp() override {}
-    
-    private:
-        enum Cursor: int8_t {
-            PITCH1,
-            PITCH_CV1,
-            PITCH2,
-            PITCH_CV2,
-            PITCH3,
-            PITCH_CV3,
-            PITCH4,
-            PITCH_CV4,
-            WAVEFORM,
-            DETUNE,
-            DETUNE_CV,
-            PHASE,
-            PHASE_CV
-        };
-
-        static constexpr int8_t WAVEFORMS[5]
-    = {WAVEFORM_SINE, WAVEFORM_TRIANGLE_VARIABLE, WAVEFORM_BANDLIMIT_SAWTOOTH, WAVEFORM_BANDLIMIT_PULSE, WAVEFORM_BANDLIMIT_SAWTOOTH_REVERSE};
-        static constexpr char const* WAVEFORM_NAMES[5] = {"SIN", "TRI", "SAW", "PLS", "SAWR"};
-        uint8_t waveform = WAVEFORM_SINE;
-        int8_t cursor = PITCH1;
-        int16_t pitch1 = -1 * 12 * 128; // C2
-        int16_t pitch2 = -1 * 12 * 128; // C2
-        int16_t pitch3 = -1 * 12 * 128; // C2
-        int16_t pitch4 = -1 * 12 * 128; // C2
-
-        int16_t detune = 0;
-        int16_t phase = 0;
-
-        /// sensitivity of detune
-        int8_t detuneFactor = 50;
-        int8_t phaseFactor = 1;
-
-        CVInputMap pitch_cv1;
-        CVInputMap pitch_cv2;
-        CVInputMap pitch_cv3;
-        CVInputMap pitch_cv4;
-
-        CVInputMap detune_cv;
-        CVInputMap phase_cv;
-
-        AudioPassthrough<MONO> input_stream;
-        AudioMixer<4> mixer1;
-        AudioMixer<4> mixer2;
-        AudioMixer<4> mixer3;
-        AudioMixer<4> mixer4;
-        AudioMixer<4> finalMixer;
-        AudioSynthWaveform synth1;
-        AudioSynthWaveform synth2;
-        AudioSynthWaveform synth3;
-        AudioSynthWaveform synth4;
-        AudioSynthWaveform synth5;
-        AudioSynthWaveform synth6;
-        AudioSynthWaveform synth7;
-        AudioSynthWaveform synth8;
-        AudioSynthWaveform synth9;
-        AudioSynthWaveform synth10;
-        AudioSynthWaveform synth11;
-        AudioSynthWaveform synth12;
-
-        AudioConnection synth1_to_mixer1{synth1, 0, mixer1, 0};
-        AudioConnection synth2_to_mixer1{synth2, 0, mixer1, 1};
-        AudioConnection synth3_to_mixer1{synth3, 0, mixer1, 2};
-        AudioConnection in_to_mixer1{input_stream, 0, mixer1, 3};
-        AudioConnection synth4_to_mixer2{synth4, 0, mixer2, 0};
-        AudioConnection synth5_to_mixer2{synth5, 0, mixer2, 1};
-        AudioConnection synth6_to_mixe2{synth6, 0, mixer2, 2};
-        AudioConnection synth7_to_mixer3{synth7, 0, mixer3, 0};
-        AudioConnection synth8_to_mixer3{synth8, 0, mixer3, 1};
-        AudioConnection synth9_to_mixer3{synth9, 0, mixer3, 2};
-        AudioConnection synth10_to_mixer4{synth10, 0, mixer4, 0};
-        AudioConnection synth11_to_mixer4{synth11, 0, mixer4, 1};
-        AudioConnection synth12_to_mixer4{synth12, 0, mixer4, 2};
-
-        AudioConnection mixer1_to_finalMixer{mixer1, 0, finalMixer, 0};
-        AudioConnection mixer2_to_finalMixer{mixer2, 0, finalMixer, 1};
-        AudioConnection mixer3_to_finalMixer{mixer3, 0, finalMixer, 2};
-        AudioConnection mixer4_to_finalMixer{mixer4, 0, finalMixer, 3};
-};
+AudioAppletSubapp<
+  NUM_SLOTS,
+  MONO_INPUT_POOL_SIZE,
+  STEREO_INPUT_POOL_SIZE,
+  MONO_PROCESSORS_POOL_SIZE,
+  STEREO_PROCESSORS_POOL_SIZE>
+  audio_app(
+    mono_input_pool,
+    stereo_input_pool,
+    mono_processors_pool,
+    stereo_processors_pool
+  );
