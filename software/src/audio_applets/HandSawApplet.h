@@ -89,40 +89,54 @@ class HandSawApplet : public HemisphereAudioApplet {
 
             mixer1.gain(3, 0.0f);
             
-            finalMixer.gain(0, 0.25f);
-            finalMixer.gain(1, 0.25f);
-            finalMixer.gain(2, 0.25f);
-            finalMixer.gain(3, 0.25f);
+            stackMixer.gain(0, 0.25f);
+            stackMixer.gain(1, 0.25f);
+            stackMixer.gain(2, 0.25f);
+            stackMixer.gain(3, 0.25f);
+
+            float m
+                = constrain(static_cast<float>(mix) * 0.01f + mix_cv.InF(), 0.0f, 1.0f);
+
+            outputMixer.gain(1, m);
+            outputMixer.gain(0, 1.0f - m);
         }
 
         void View() override {
             
             gfxStartCursor(1, 15);
             gfxPrintTuningIndicator(pitch1);
+            gfxEndCursor(cursor == PITCH1);
+            gfxStartCursor();
             gfxPrint(pitch_cv1);
             gfxEndCursor(cursor == PITCH_CV1, false, pitch_cv1.InputName());
 
-            gfxStartCursor(31, 15);
+            gfxStartCursor(16, 15);
             gfxPrintTuningIndicator(pitch2);
+            gfxEndCursor(cursor == PITCH2);
+            gfxStartCursor();
             gfxPrint(pitch_cv2);
             gfxEndCursor(cursor == PITCH_CV2, false, pitch_cv2.InputName());
 
-            gfxStartCursor(1, 25);
+            gfxStartCursor(31, 15);
             gfxPrintTuningIndicator(pitch3);
+            gfxEndCursor(cursor == PITCH3);
+            gfxStartCursor();
             gfxPrint(pitch_cv3);
             gfxEndCursor(cursor == PITCH_CV3, false, pitch_cv3.InputName());
 
-            gfxStartCursor(31, 25);
+            gfxStartCursor(46, 15);
             gfxPrintTuningIndicator(pitch4);
+            gfxEndCursor(cursor == PITCH4);
+            gfxStartCursor();
             gfxPrint(pitch_cv4);
             gfxEndCursor(cursor == PITCH_CV4, false, pitch_cv4.InputName());
 
-            gfxPrint(1, 35, "Wave: ");
+            gfxPrint(1, 25, "Wave: ");
             gfxStartCursor();
             gfxPrint(WAVEFORM_NAMES[waveform]);
             gfxEndCursor(cursor == WAVEFORM);
 
-            gfxPrint(1, 45, "DT: ");
+            gfxPrint(1, 35, "DT: ");
             gfxStartCursor();
             graphics.printf("%d", detune);
             gfxEndCursor(cursor == DETUNE);
@@ -131,14 +145,23 @@ class HandSawApplet : public HemisphereAudioApplet {
             gfxPrint(detune_cv);
             gfxEndCursor(cursor == DETUNE_CV, false, detune_cv.InputName());
 
-            gfxPrint(1, 55, "P: ");
+            gfxPrint(1, 45, "Ph: ");
             gfxStartCursor();
             graphics.printf("%d", phase);
-            gfxEndCursor(cursor == PHASE_CV);
+            gfxEndCursor(cursor == PHASE);
 
             gfxStartCursor();
             gfxPrint(phase_cv);
             gfxEndCursor(cursor == PHASE_CV, false, phase_cv.InputName());
+
+            gfxPrint(1, 55, "Mix: ");
+            gfxStartCursor();
+            graphics.printf("%3d%%", mix);
+            gfxEndCursor(cursor == MIX);
+            
+            gfxStartCursor();
+            gfxPrint(mix_cv);
+            gfxEndCursor(cursor == MIX_CV, false, mix_cv.InputName());  
 
             gfxDisplayInputMapEditor();
         }
@@ -149,15 +172,15 @@ class HandSawApplet : public HemisphereAudioApplet {
         void OnDataRequest(std::array<uint64_t, CONFIG_SIZE>& data) override {
             data[0] = PackPackables(SWARM_OSC_PARAMS);
             data[1] = PackPackables(pitch_cv1, pitch_cv2, pitch_cv3, pitch_cv4);
-            data[2] = PackPackables(detune_cv, phase_cv);
-            data[3] = PackPackables(waveform, detune, phase);
+            data[2] = PackPackables(detune_cv, phase_cv, mix_cv);
+            data[3] = PackPackables(waveform, detune, phase, mix);
         }
 
         void OnDataReceive(const std::array<uint64_t, CONFIG_SIZE>& data) override {
             UnpackPackables(data[0], SWARM_OSC_PARAMS);
             UnpackPackables(data[1], pitch_cv1, pitch_cv2, pitch_cv3, pitch_cv4);
-            UnpackPackables(data[2], detune_cv, phase_cv);
-            UnpackPackables(data[3], waveform, detune, phase);
+            UnpackPackables(data[2], detune_cv, phase_cv, mix_cv);
+            UnpackPackables(data[3], waveform, detune, phase, mix);
 
             SetWaveform(waveform);
         }
@@ -165,7 +188,8 @@ class HandSawApplet : public HemisphereAudioApplet {
         void OnButtonPress() override {
             if (CheckEditInputMapPress(cursor,
                 IndexedInput(DETUNE_CV, detune_cv),
-                IndexedInput(PHASE_CV, phase_cv)
+                IndexedInput(PHASE_CV, phase_cv),
+                IndexedInput(MIX_CV, mix_cv)
             ))
             return;
           CursorToggle();
@@ -189,7 +213,7 @@ class HandSawApplet : public HemisphereAudioApplet {
 
         void OnEncoderMove(int direction) override {
              if (!EditMode()) {
-                MoveCursor(cursor, direction, PHASE_CV);
+                MoveCursor(cursor, direction, MIX_CV);
                 return;
             }
             if (EditSelectedInputMap(direction)) return;
@@ -236,7 +260,12 @@ class HandSawApplet : public HemisphereAudioApplet {
                 case PHASE_CV:
                     phase_cv.ChangeSource(direction);
                     break;
-
+                case MIX:
+                    mix = constrain(mix + direction, 0, 100);
+                    break;
+                case MIX_CV:
+                    mix_cv.ChangeSource(direction);
+                    break;
                 default:
                     break;
             }
@@ -246,7 +275,7 @@ class HandSawApplet : public HemisphereAudioApplet {
             return &input_stream;
         }
         AudioStream* OutputStream() override {
-            return &finalMixer;
+            return &outputMixer;
         }
     protected:
         void SetHelp() override {}
@@ -265,7 +294,9 @@ class HandSawApplet : public HemisphereAudioApplet {
             DETUNE,
             DETUNE_CV,
             PHASE,
-            PHASE_CV
+            PHASE_CV,
+            MIX,
+            MIX_CV
         };
 
         static constexpr int8_t WAVEFORMS[5]
@@ -280,6 +311,7 @@ class HandSawApplet : public HemisphereAudioApplet {
 
         int16_t detune = 0;
         int16_t phase = 0;
+        int8_t mix = 100;
 
         /// sensitivity of detune
         int8_t detuneFactor = 50;
@@ -292,13 +324,16 @@ class HandSawApplet : public HemisphereAudioApplet {
 
         CVInputMap detune_cv;
         CVInputMap phase_cv;
+        CVInputMap mix_cv;
 
         AudioPassthrough<MONO> input_stream;
         AudioMixer<4> mixer1;
         AudioMixer<4> mixer2;
         AudioMixer<4> mixer3;
         AudioMixer<4> mixer4;
-        AudioMixer<4> finalMixer;
+        AudioMixer<4> stackMixer;
+        AudioMixer<2> outputMixer;
+        
         AudioSynthWaveform synth1;
         AudioSynthWaveform synth2;
         AudioSynthWaveform synth3;
@@ -326,8 +361,11 @@ class HandSawApplet : public HemisphereAudioApplet {
         AudioConnection synth11_to_mixer4{synth11, 0, mixer4, 1};
         AudioConnection synth12_to_mixer4{synth12, 0, mixer4, 2};
 
-        AudioConnection mixer1_to_finalMixer{mixer1, 0, finalMixer, 0};
-        AudioConnection mixer2_to_finalMixer{mixer2, 0, finalMixer, 1};
-        AudioConnection mixer3_to_finalMixer{mixer3, 0, finalMixer, 2};
-        AudioConnection mixer4_to_finalMixer{mixer4, 0, finalMixer, 3};
+        AudioConnection mixer1_to_stackMixer{mixer1, 0, stackMixer, 0};
+        AudioConnection mixer2_to_stackMixer{mixer2, 0, stackMixer, 1};
+        AudioConnection mixer3_to_stackMixer{mixer3, 0, stackMixer, 2};
+        AudioConnection mixer4_to_stackMixer{mixer4, 0, stackMixer, 3};
+        
+        AudioConnection input_to_outputMixer{input_stream, 0, outputMixer, 0};
+        AudioConnection stackMixer_to_outputMixer{stackMixer, 0, outputMixer, 1};
 };

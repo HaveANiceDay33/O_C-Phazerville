@@ -27,6 +27,7 @@ DMAMEM std::tuple<
   DynamicsApplet<MONO>,
   InputApplet<MONO>,
   OscApplet,
+  HandSawApplet,
   DelayApplet<MONO>,
   LadderApplet<MONO>,
   FilterFolderApplet<MONO>,
