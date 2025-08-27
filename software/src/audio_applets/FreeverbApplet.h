@@ -8,13 +8,19 @@
 #include "Audio/InterpolatingStream.h"
 #include <Audio.h>
 
-
+template <AudioChannels Channels>
 class ReverbApplet : public HemisphereAudioApplet {
     public:
         const char* applet_name() override {
             return "Reverb";
         }
-        void Start() override {}
+        void Start() override {
+            reverb.Acquire();
+            for (int i = 0; i < Channels; i++){
+                in_conns[i].connect(input, i, complimit[i], 0);
+                out_conns[i].connect(complimit[i], 0, output, i);
+            }
+        }
 
         void Unload() override {
             AllowRestart();
@@ -65,10 +71,10 @@ class ReverbApplet : public HemisphereAudioApplet {
         }
 
         AudioStream* InputStream() override {
-            return &input_stream;
+            return &input;
         }
         AudioStream* OutputStream() override {
-            return &mixer;
+            return &output;
         }
     protected:
         void SetHelp() override {}
@@ -81,17 +87,13 @@ class ReverbApplet : public HemisphereAudioApplet {
 
         int8_t cursor = MIX;
 
-        AudioPassthrough<MONO> input_stream;
-        AudioMixer<2> mixer;
-        AudioEffectReverb reverb;
-
-        AudioEffectFreeverbStereo freeverb;
+        AudioPassthrough<Channels> input;
+        std::array<AudioConnection, Channels> in_conns;
+        AudioEffectFreeverbStereo<Channels> reverb;
+        std::array<AudioConnection, Channels> out_conns;
+        AudioPassthrough<Channels> output;
 
         int8_t mix = 100;
 
         CVInputMap mix_cv;
-
-        AudioConnection input_to_mixer{input_stream, 0, mixer, 0};
-        AudioConnection input_to_reverb{mixer, 0, reverb, 0};
-        AudioConnection reverb_to_mixer{reverb, 0, mixer, 1};
 };
