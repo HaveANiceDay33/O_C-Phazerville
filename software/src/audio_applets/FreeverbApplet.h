@@ -89,7 +89,7 @@ class ReverbApplet : public HemisphereAudioApplet {
 
         AudioPassthrough<Channels> input;
         std::array<AudioConnection, Channels> in_conns;
-        AudioEffectFreeverbStereo<Channels> reverb;
+        AudioEffectFreeverbStereo reverb;
         std::array<AudioConnection, Channels> out_conns;
         AudioPassthrough<Channels> output;
 
