@@ -14,7 +14,7 @@ class ReverbApplet : public HemisphereAudioApplet {
             return "Reverb";
         }
         void Start() override {
-            
+            filter.frequency(15000);
         }
 
         void Unload() override {
@@ -24,6 +24,8 @@ class ReverbApplet : public HemisphereAudioApplet {
         void Controller() override {
             reverb.roomsize((size * 0.01f) + size_cv.InF() * 0.01f);
             reverb.damping((damp * 0.01f) + damp_cv.InF() * 0.01f);
+
+            filter.frequency(cutoff);
 
             float m = constrain(static_cast<float>(mix) * 0.01f + mix_cv.InF(), 0.0f, 1.0f);
            
@@ -50,7 +52,16 @@ class ReverbApplet : public HemisphereAudioApplet {
             gfxPrint(damp_cv);
             gfxEndCursor(cursor == DAMP_CV, false, damp_cv.InputName());
 
-            gfxPrint(1, 35, "Mix:");
+            gfxPrint(1, 35, "C:");
+            gfxStartCursor();
+            graphics.printf("%5dHz", cutoff);
+            gfxEndCursor(cursor == CUTOFF);
+
+            gfxStartCursor();
+            gfxPrint(cutoff_cv);
+            gfxEndCursor(cursor == CUTOFF_CV, false, cutoff_cv.InputName());
+
+            gfxPrint(1, 45, "Mix:");
             gfxStartCursor();
             graphics.printf("%3d%%", mix);
             gfxEndCursor(cursor == MIX);
@@ -65,18 +76,21 @@ class ReverbApplet : public HemisphereAudioApplet {
         void OnDataRequest(std::array<uint64_t, CONFIG_SIZE>& data) override {
             data[0] = PackPackables(mix, size, damp);
             data[1] = PackPackables(size_cv, damp_cv, mix_cv);
+            data[2] = PackPackables(cutoff, cutoff_cv);
         }
 
         void OnDataReceive(const std::array<uint64_t, CONFIG_SIZE>& data) override {
             UnpackPackables(data[0], mix, size, damp);
             UnpackPackables(data[1], size_cv, damp_cv, mix_cv);
+            UnpackPackables(data[2], cutoff, cutoff_cv);
         }
 
         void OnButtonPress() override {
             if (CheckEditInputMapPress(cursor,
                 IndexedInput(MIX_CV, mix_cv),
                 IndexedInput(SIZE_CV, size_cv),
-                IndexedInput(DAMP_CV, damp_cv)
+                IndexedInput(DAMP_CV, damp_cv),
+                IndexedInput(CUTOFF_CV, cutoff_cv)
             ))
             return;
           CursorToggle();
@@ -102,6 +116,12 @@ class ReverbApplet : public HemisphereAudioApplet {
                     break;
                 case DAMP_CV:
                     damp_cv.ChangeSource(direction);
+                    break;
+                case CUTOFF:
+                    cutoff = constrain(cutoff + direction * 50, 0, 17500);
+                    break;
+                case CUTOFF_CV:
+                    cutoff_cv.ChangeSource(direction);
                     break;
                 case MIX:
                     mix = constrain(mix + direction, 0, 100);
@@ -129,6 +149,8 @@ class ReverbApplet : public HemisphereAudioApplet {
             SIZE_CV,
             DAMP,
             DAMP_CV,
+            CUTOFF,
+            CUTOFF_CV,
             MIX,
             MIX_CV
         };
@@ -137,20 +159,22 @@ class ReverbApplet : public HemisphereAudioApplet {
         AudioPassthrough<MONO> input;
         
         AudioEffectFreeverb reverb;
+        AudioFilterStateVariable filter;
         
         AudioMixer<2> dry_wet_mixer;
 
         AudioConnection input_to_reverb{input, 0, reverb, 0};
-        AudioConnection reverb_to_dry_wet{reverb, 0, dry_wet_mixer, 0};
+        AudioConnection reverb_to_dry_wet{reverb, 0, filter, 0};
+        AudioConnection filter_to_dry_wet{filter, 0, dry_wet_mixer, 0};
         AudioConnection input_to_dry_wet{input, 0, dry_wet_mixer, 1};
 
         int8_t mix = 100;
-        int8_t size = 1;
-        int8_t damp = 2;
+        int8_t size = 50;
+        int8_t damp = 50;
+        int16_t cutoff = 15000;
 
         CVInputMap mix_cv;
         CVInputMap size_cv;
         CVInputMap damp_cv;
-        CVInputMap filter_cutoff_cv;
-        CVInputMap filter_resonance_cv;
-};
+        CVInputMap cutoff_cv;
+    };
