@@ -8,18 +8,13 @@
 #include "Audio/InterpolatingStream.h"
 #include <Audio.h>
 
-template <AudioChannels Channels>
 class ReverbApplet : public HemisphereAudioApplet {
     public:
         const char* applet_name() override {
             return "Reverb";
         }
         void Start() override {
-            reverb.Acquire();
-            for (int i = 0; i < Channels; i++){
-                in_conns[i].connect(input, i, complimit[i], 0);
-                out_conns[i].connect(complimit[i], 0, output, i);
-            }
+            
         }
 
         void Unload() override {
@@ -27,26 +22,64 @@ class ReverbApplet : public HemisphereAudioApplet {
         }
 
         void Controller() override {
-            float m = constrain(static_cast<float>(mix) * 0.01f + mix_cv.InF(), 0.0f, 1.0f);
+            reverb.roomsize((size * 0.01f) + size_cv.InF() * 0.01f);
+            reverb.damping((damp * 0.01f) + damp_cv.InF() * 0.01f);
 
-            mixer.gain(1, m);
-            mixer.gain(0, 1.0f - m);
+            float m = constrain(static_cast<float>(mix) * 0.01f + mix_cv.InF(), 0.0f, 1.0f);
+           
+            dry_wet_mixer.gain(0, m);
+            dry_wet_mixer.gain(1, 1.0f - m);
         }
 
         void View() override {
+            gfxPrint(1, 15, "Size:");
+            gfxStartCursor();
+            graphics.printf("%3d%%", size);
+            gfxEndCursor(cursor == SIZE);
 
+            gfxStartCursor();
+            gfxPrint(size_cv);
+            gfxEndCursor(cursor == SIZE_CV, false, size_cv.InputName());
+
+            gfxPrint(1, 25, "Damp:");
+            gfxStartCursor();
+            graphics.printf("%3d%%", damp);
+            gfxEndCursor(cursor == DAMP);
+
+            gfxStartCursor();
+            gfxPrint(damp_cv);
+            gfxEndCursor(cursor == DAMP_CV, false, damp_cv.InputName());
+
+            gfxPrint(1, 35, "Mix:");
+            gfxStartCursor();
+            graphics.printf("%3d%%", mix);
+            gfxEndCursor(cursor == MIX);
+            
+            gfxStartCursor();
+            gfxPrint(mix_cv);
+            gfxEndCursor(cursor == MIX_CV, false, mix_cv.InputName());  
+
+            gfxDisplayInputMapEditor();
         }
 
         void OnDataRequest(std::array<uint64_t, CONFIG_SIZE>& data) override {
-            
+            data[0] = PackPackables(mix, size, damp);
+            data[1] = PackPackables(size_cv, damp_cv, mix_cv);
         }
 
         void OnDataReceive(const std::array<uint64_t, CONFIG_SIZE>& data) override {
-
+            UnpackPackables(data[0], mix, size, damp);
+            UnpackPackables(data[1], size_cv, damp_cv, mix_cv);
         }
 
         void OnButtonPress() override {
-
+            if (CheckEditInputMapPress(cursor,
+                IndexedInput(MIX_CV, mix_cv),
+                IndexedInput(SIZE_CV, size_cv),
+                IndexedInput(DAMP_CV, damp_cv)
+            ))
+            return;
+          CursorToggle();
         }
         
         void OnEncoderMove(int direction) override {
@@ -58,6 +91,18 @@ class ReverbApplet : public HemisphereAudioApplet {
             if (EditSelectedInputMap(direction)) return;
 
             switch (cursor) {
+                case SIZE:
+                    size = constrain(size + direction, 0, 100);
+                    break;
+                case SIZE_CV:
+                    size_cv.ChangeSource(direction);
+                    break;
+                case DAMP:
+                    damp = constrain(damp + direction, 1, 100);
+                    break;
+                case DAMP_CV:
+                    damp_cv.ChangeSource(direction);
+                    break;
                 case MIX:
                     mix = constrain(mix + direction, 0, 100);
                     break;
@@ -66,7 +111,6 @@ class ReverbApplet : public HemisphereAudioApplet {
                     break;
                 default:
                     break;
-
             }
         }
 
@@ -74,26 +118,39 @@ class ReverbApplet : public HemisphereAudioApplet {
             return &input;
         }
         AudioStream* OutputStream() override {
-            return &output;
+            return &dry_wet_mixer;
         }
     protected:
         void SetHelp() override {}
     
     private:
         enum Cursor: int8_t {
+            SIZE,
+            SIZE_CV,
+            DAMP,
+            DAMP_CV,
             MIX,
             MIX_CV
         };
 
-        int8_t cursor = MIX;
+        int8_t cursor = SIZE;
+        AudioPassthrough<MONO> input;
+        
+        AudioEffectFreeverb reverb;
+        
+        AudioMixer<2> dry_wet_mixer;
 
-        AudioPassthrough<Channels> input;
-        std::array<AudioConnection, Channels> in_conns;
-        AudioEffectFreeverbStereo reverb;
-        std::array<AudioConnection, Channels> out_conns;
-        AudioPassthrough<Channels> output;
+        AudioConnection input_to_reverb{input, 0, reverb, 0};
+        AudioConnection reverb_to_dry_wet{reverb, 0, dry_wet_mixer, 0};
+        AudioConnection input_to_dry_wet{input, 0, dry_wet_mixer, 1};
 
         int8_t mix = 100;
+        int8_t size = 1;
+        int8_t damp = 2;
 
         CVInputMap mix_cv;
+        CVInputMap size_cv;
+        CVInputMap damp_cv;
+        CVInputMap filter_cutoff_cv;
+        CVInputMap filter_resonance_cv;
 };
