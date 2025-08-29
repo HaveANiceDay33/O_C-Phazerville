@@ -18,37 +18,39 @@
 #include "audio_applets/SamverbApplet.h"
 const size_t NUM_SLOTS = 5;
 
-DMAMEM std::tuple<InputApplet<MONO>, UpsampledApplet<MONO>, OscApplet, HandSawApplet, WavPlayerApplet<MONO>>
+DMAMEM std::tuple<InputApplet<MONO>, HandSawApplet>
+//  UpsampledApplet<MONO>, OscApplet,  WavPlayerApplet<MONO>>
   mono_input_pool[2];
 DMAMEM std::
-  tuple<InputApplet<STEREO>, WavPlayerApplet<STEREO>, UpsampledApplet<STEREO>>
+  tuple<InputApplet<STEREO>>
+  // , WavPlayerApplet<STEREO>, UpsampledApplet<STEREO>>
     stereo_input_pool;
 DMAMEM std::tuple<
   PassthruApplet<MONO>,
-  DynamicsApplet<MONO>,
+  // DynamicsApplet<MONO>,
   InputApplet<MONO>,
-  OscApplet,
+  // OscApplet,
   HandSawApplet,
   DelayApplet<MONO>,
   LadderApplet<MONO>,
   FilterFolderApplet<MONO>,
-  WavPlayerApplet<MONO>,
+  // WavPlayerApplet<MONO>,
   VcaApplet<MONO>,
-  SamverbApplet,
-  UpsampledApplet<MONO>>
+  BungverbApplet>
+  // UpsampledApplet<MONO>>
   mono_processors_pool[2][NUM_SLOTS - 1];
 DMAMEM std::tuple<
   PassthruApplet<STEREO>,
   CrosspanApplet,
-  MidSideApplet,
-  DynamicsApplet<STEREO>,
+  // MidSideApplet,
+  // DynamicsApplet<STEREO>,
   InputApplet<STEREO>,
   DelayApplet<STEREO>,
   LadderApplet<STEREO>,
   VcaApplet<STEREO>,
-  FilterFolderApplet<STEREO>,
-  WavPlayerApplet<STEREO>,
-  UpsampledApplet<STEREO>>
+  FilterFolderApplet<STEREO>>
+  // WavPlayerApplet<STEREO>,
+  // UpsampledApplet<STEREO>>
   stereo_processors_pool[NUM_SLOTS - 1];
 
 // Helper to extract the tuple type from an array... thanks ChatGPT...

@@ -9,10 +9,10 @@
 #include <Audio.h>
 #include <Audio/effect_reverb_schroeder.h>
 
-class SamverbApplet : public HemisphereAudioApplet {
+class BungverbApplet : public HemisphereAudioApplet {
     public:
         const char* applet_name() override {
-            return "Samverb";
+            return "Bungverb";
         }
         void Start() override {
             filter.frequency(15000);
@@ -35,9 +35,9 @@ class SamverbApplet : public HemisphereAudioApplet {
         }
 
         void View() override {
-            gfxPrint(1, 15, "Time:");
+            gfxPrint(1, 15, "T: ");
             gfxStartCursor();
-            graphics.printf("%.1f", decay_time);
+            graphics.printf("%d.%1ds", SPLIT_INT_DEC(decay_time, 10));
             gfxEndCursor(cursor == DECAY_TIME);
 
             gfxStartCursor();

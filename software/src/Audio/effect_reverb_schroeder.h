@@ -26,6 +26,7 @@ public:
 
     float delaySec = avgDelay / 44100.0f;
     float g = expf((-3.0f * delaySec) / seconds); // feedback coefficient
+    if (g > 0.9999f) g = 0.9999f;
 
     __disable_irq();
     decayFeedback = g;
@@ -76,13 +77,17 @@ public:
       // ---- Parallel combs ----
       float combSum = 0.0f;
       for (int i = 0; i < COMB_COUNT; ++i) {
+        if (combIdx[i] < 0) combIdx[i] += combLen[i];
+        if (combIdx[i] >= combLen[i]) combIdx[i] -= combLen[i];
+
         float y = combBuf[i][combIdx[i]];
         combStore[i] = (combStore[i] * localDamp2) + (y * localDamp1);
-        float write = x + feedback * combStore[i];
-        combBuf[i][combIdx[i]] = write;
+        combBuf[i][combIdx[i]] = x + feedback * combStore[i];
         combIdx[i]++; if (combIdx[i] >= combLen[i]) combIdx[i] = 0;
         combSum += y;
       }
+
+      combSum *= (1.0f / COMB_COUNT);
 
       // ---- Series allpasses ----
       float apOut = combSum;
@@ -94,7 +99,7 @@ public:
         apOut = bufOut + z * AP_GAIN;
       }
 
-      float y = apOut; // wet only
+      float y = apOut * 0.6f; // wet only
 
       int32_t s = (int32_t)(y * 32767.0f);
       if (s > 32767) s = 32767;
@@ -118,28 +123,38 @@ private:
   static constexpr int sr = 44100;
   static constexpr int COMB_COUNT = 4;
   static constexpr int combLenConst[COMB_COUNT] = {
-    int(0.0297f * sr + 0.5f),
-    int(0.0371f * sr + 0.5f),
-    int(0.0411f * sr + 0.5f),
-    int(0.0437f * sr + 0.5f)
+    1319,  // ~29.9 ms
+    1493,  // ~33.9 ms
+    1559,  // ~35.3 ms
+    1613,  // ~36.6 ms
+    // 1747,  // ~39.6 ms
+    // 1873,  // ~42.5 ms
   };
-  static constexpr int ALLPASS_COUNT = 2;
+
+  static constexpr int ALLPASS_COUNT = 4;
   static constexpr int apLenConst[ALLPASS_COUNT] = {
-    int(0.0050f * sr + 0.5f),
-    int(0.0017f * sr + 0.5f)
+    int(0.0050f * sr + 0.5f),  // ~5 ms
+    int(0.0017f * sr + 0.5f),   // ~1.7 ms
+    int(0.0083f * sr + 0.5f),  // ~8.3 ms
+    int(0.0126f * sr + 0.5f)   // ~12.6 ms
   };
   static constexpr float AP_GAIN = 0.5f;
 
-  int combLen[COMB_COUNT] = { combLenConst[0], combLenConst[1], combLenConst[2], combLenConst[3] };
-  int apLen[ALLPASS_COUNT] = { apLenConst[0], apLenConst[1] };
+  int combLen[COMB_COUNT] = {
+    combLenConst[0], combLenConst[1], combLenConst[2], combLenConst[3],
+    // combLenConst[4], combLenConst[5],
+  };
+  int apLen[ALLPASS_COUNT] = { apLenConst[0], apLenConst[1], apLenConst[2], apLenConst[3] };
 
-  static constexpr int COMB_MAX = combLenConst[3];
-  static constexpr int AP_MAX   = apLenConst[0];
+  // The maximum buffer size must fit the largest delay
+  static constexpr int COMB_MAX = combLenConst[COMB_COUNT - 1];
+  static constexpr int AP_MAX   = apLenConst[ALLPASS_COUNT - 1];
 
   float combBuf[COMB_COUNT][COMB_MAX] __attribute__((aligned(4)));
   float apBuf[ALLPASS_COUNT][AP_MAX]  __attribute__((aligned(4)));
 
-  volatile uint16_t combIdx[COMB_COUNT] = {0,0,0,0};
-  volatile uint16_t apIdx[ALLPASS_COUNT] = {0,0};
-  float combStore[COMB_COUNT] = {0,0,0,0};
+  volatile uint16_t combIdx[COMB_COUNT] = {0};
+  volatile uint16_t apIdx[ALLPASS_COUNT] = {0};
+
+  float combStore[COMB_COUNT] = {0};
 };
