@@ -14,8 +14,8 @@
 #include "audio_applets/VCAApplet.h"
 #include "audio_applets/WAVPlayerApplet.h"
 #include "audio_applets/HandSawApplet.h"
-#include "audio_applets/FreeverbApplet.h"
-
+// #include "audio_applets/FreeverbApplet.h"
+#include "audio_applets/SamverbApplet.h"
 const size_t NUM_SLOTS = 5;
 
 DMAMEM std::tuple<InputApplet<MONO>, UpsampledApplet<MONO>, OscApplet, HandSawApplet, WavPlayerApplet<MONO>>
@@ -34,7 +34,7 @@ DMAMEM std::tuple<
   FilterFolderApplet<MONO>,
   WavPlayerApplet<MONO>,
   VcaApplet<MONO>,
-  ReverbApplet,
+  SamverbApplet,
   UpsampledApplet<MONO>>
   mono_processors_pool[2][NUM_SLOTS - 1];
 DMAMEM std::tuple<
