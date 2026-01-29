@@ -1,9 +1,6 @@
 TODO (Roadmap)
 ===
 
-# v1.10
-* Config option for LFS vs. SD for preset storage
-
 # v2.0
 * T4.1 - expand to 8 channels: Quantermain, Piqued, Quadraturia, Captain MIDI
 * **Fully merge "abandoned/refactoring" branch from pld**
@@ -14,8 +11,10 @@ TODO (Roadmap)
 * Integrate Calibr8or with DAC for global tracking adjustments
 * USB Gamepad support
 * MTP_Teensy lib for file management over USB
+* Config option for LFS vs. SD for preset storage
 
 # ???
+* Re-implement Piqued envelopes in an applet
 * Audio Applets for T4.1
   - add VCF+VCA to Osc
   - 3-band EQ / multi-band dynamics
@@ -29,6 +28,10 @@ TODO (Roadmap)
 * Add BugCrack-style sounds to Pong
 
 # APP IDEAS
+* Modul8or
+  - 8 independent channels, maybe reusing applets
+  - various engines (VectorOsc, tideslite, etc.)
+  - freely assignable inputs; static channel outputs
 * Two Spheres (two applets in series on each side)
 * Snake Game
 * Tetris

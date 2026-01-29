@@ -20,6 +20,10 @@ namespace HS {
   PopupType popup_type = MENU_POPUP;
   int q_edit = 0; // edit cursor for quantizer popup, 0 = not editing
   uint8_t qview = 0; // which quantizer's setting is shown in popup
+
+  int midi_edit = 0;
+  uint8_t mview = 0;
+
   ErrMsgIndex msg_idx;
 
   OC::SemitoneQuantizer input_quant[ADC_CHANNEL_LAST];
@@ -49,6 +53,7 @@ namespace HS {
 
   OC::menu::ScreenCursor<5> showhide_cursor;
 
+  FLASHMEM
   void Init() {
     for (auto &iq : input_quant)
       iq.Init();
@@ -84,6 +89,9 @@ namespace HS {
   }
 
   // --- Quantizer helpers
+  QuantEngine& GetQuantEngine(int ch) {
+    return q_engine[ch];
+  }
   int GetLatestNoteNumber(int ch) {
     return q_engine[ch].quantizer.GetLatestNoteNumber();
   }
@@ -166,10 +174,52 @@ namespace HS {
       }
     }
   }
+  // -----
+  void MidiMapEdit(int ch) {
+    mview = constrain(ch, 0, MIDIMAP_MAX - 1);
+    midi_edit = 1;
+  }
+  enum MEditCursor {
+    OFF, CHANNEL,
+    MODE,
+    VOICE,
+    RANGELOW, RANGEHIGH,
+
+    MEDITCURSOR_COUNT
+  };
+  void MEditEncoderMove(bool rightenc, int dir) {
+    if (!rightenc) {
+      // left encoder moves midi_edit cursor
+      midi_edit = constrain(midi_edit + dir, 1, MEDITCURSOR_COUNT-1);
+    } else {
+      MIDIMapping &map = frame.MIDIState.mapping[mview];
+      // right encoder is delegated
+      switch(midi_edit){
+        case 1: // chan
+          map.AdjustChannel(dir);
+          frame.MIDIState.UpdateMidiChannelFilter();
+          break;
+        case 2: // mode
+          map.AdjustFunction(dir);
+          frame.MIDIState.UpdateMidiChannelFilter();
+          break;
+        case 3: // voice (poly only)
+          map.AdjustVoice(dir);
+          break;
+        case 4: // low
+          map.AdjustRangeLow(dir);
+          break;
+        case 5: // high
+          map.AdjustRangeHigh(dir);
+          break;
+      }
+    }
+  }
 
   void DrawPopup(const int config_cursor, const int preset_id, const bool blink) {
 
     enum ConfigCursor {
+        DELETE_PRESET,
         LOAD_PRESET, SAVE_PRESET,
         AUTO_SAVE,
         CONFIG_DUMMY, // past this point goes full screen
@@ -182,28 +232,27 @@ namespace HS {
     CLOCK_POPUP,
     PRESET_POPUP,
     QUANTIZER_POPUP,
+    MIDI_POPUP,
     MESSAGE_POPUP,
     */
-    if (popup_type == MENU_POPUP) {
-      px = 73;
-      py = 25;
-      pw = 54;
-      ph = 38;
-    } else if (popup_type == QUANTIZER_POPUP) {
-      px = 20;
-      py = 23;
-      pw = 88;
-      ph = 28;
-    } else if (popup_type == MESSAGE_POPUP) {
-      px = 16;
-      py = 23;
-      pw = 96;
-      ph = 18;
-    } else {
-      px = 23;
-      py = 23;
-      pw = 82;
-      ph = 18;
+    switch (popup_type) {
+      case MENU_POPUP:
+        px = 73; py = 25;
+        pw = 54; ph = 38;
+        break;
+      case MIDI_POPUP:
+      case QUANTIZER_POPUP:
+        px = 20; py = 23;
+        pw = 88; ph = 28;
+        break;
+      case MESSAGE_POPUP:
+        px = 16; py = 23;
+        pw = 96; ph = 18;
+        break;
+      default:
+        px = 23; py = 23;
+        pw = 82; ph = 18;
+        break;
     }
 
     graphics.clearRect(px, py, pw, ph);
@@ -285,7 +334,7 @@ namespace HS {
           else
             gfxIcon(22 + (q_edit-4)*5, 44, UP_BTN_ICON);
 
-          gfxInvert(20, 23, 88, 28);
+          gfxInvert(px, py, pw, ph);
 
           // context clues at top/bottom of screen
           gfxFooter("L:cursor     R:adjust");
@@ -293,6 +342,38 @@ namespace HS {
           gfxHeader("A:Oct+         B:Oct-");
         }
 
+        break;
+      }
+      case MIDI_POPUP:
+      {
+        MIDIMapping& map = frame.MIDIState.mapping[mview];
+        graphics.printf(
+          "Ch:%s  %s", midi_channels[map.channel], midi_fn_name[map.function]
+        );
+        if (map.function == HEM_MIDI_CC_OUT) gfxPrint(map.function_cc);
+
+        graphics.setPrintPos(px + 5, py + 15);
+        graphics.printf(
+          "V:%d<%s:%s>",
+          map.dac_polyvoice + 1,
+          midi_note_numbers[map.range_low],
+          midi_note_numbers[map.range_high]
+        );
+
+        if (midi_edit) {
+          if (midi_edit < 3) // chan or mode
+            gfxIcon(px + 5 + 24 * midi_edit, 35, UP_BTN_ICON);
+          else // voice, range low, range high
+            gfxIcon(px + 17 + 20 * (midi_edit - 3), 45, UP_BTN_ICON);
+
+          // context clues at top/bottom of screen
+          gfxFooter("L:cursor     R:adjust");
+          graphics.clearRect(0, 0, 128, 10);
+          gfxHeader("A:Prev   M     B:Next");
+          gfxPrint(61, 1, mview + 1);
+        }
+
+        gfxInvert(px, py, pw, ph);
         break;
       }
     }
@@ -337,6 +418,42 @@ void gfxPrint(int num) {
 void gfxPrint(int x_adv, int num) { // Print number with character padding
     for (int c = 0; c < (x_adv / 6); c++) gfxPrint(" ");
     gfxPrint(num);
+}
+
+void gfxPrint(int x, int y, HS::QuantEngine &q_eng, bool overlay = true) {
+  if (overlay) {
+    graphics.clearRect(x - 2, y - 2, 29, 22);
+    gfxFrame(x - 1, y - 2, 27, 21, true);
+  }
+
+  gfxPrint(x, y, OC::scale_names_short[q_eng.scale]);
+  gfxPrint(
+    (q_eng.octave == 0 ? x + 6 : x),
+    y + 10,
+    OC::Strings::note_names_unpadded[q_eng.root_note]
+  );
+  if (q_eng.octave != 0) {
+    gfxPrint(x + 12, y + 10, q_eng.octave);
+  }
+}
+void gfxPrintScale(int x, int y, int qsel) {
+  gfxPrint(x, y, HS::q_engine[qsel]);
+}
+
+void gfxPrintIcon(const uint8_t *data, int16_t w) {
+    gfxIcon(graphics.getPrintPosX(), graphics.getPrintPosY(), data);
+    gfxPos(graphics.getPrintPosX() + w, graphics.getPrintPosY());
+}
+void gfxPrint(HS::DigitalInputMap &map) {
+  gfxPrintIcon(map.Icon());
+  if (map.Gate()) gfxInvert(graphics.getPrintPosX()-8, graphics.getPrintPosY(), 8, 8);
+}
+void gfxPrint(HS::CVInputMap &map) {
+  gfxPrintIcon(map.Icon());
+  const int xpos = graphics.getPrintPosX() - 1;
+  const int ypos = graphics.getPrintPosY() + 4;
+  const int height = map.InRescaled(24);
+  gfxLine(xpos, ypos, xpos, ypos - height);
 }
 
 /* Convert CV value to voltage level and print  to two decimal places */

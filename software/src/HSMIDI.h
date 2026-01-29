@@ -37,7 +37,7 @@
 #include <MIDI.h>
 #include <USBHost_t36.h>
 extern USBHost thisUSB;
-extern MIDIDevice usbHostMIDI;
+extern MIDIDevice_BigBuffer usbHostMIDI;
 extern midi::MidiInterface<midi::SerialMIDI<HardwareSerial> > MIDI1;
 #endif
 

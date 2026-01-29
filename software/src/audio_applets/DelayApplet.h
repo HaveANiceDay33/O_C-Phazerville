@@ -1,13 +1,6 @@
 #pragma once
 
-#include "HSicons.h"
-#include "HemisphereAudioApplet.h"
-#include "dsputils.h"
-#include "dsputils_arm.h"
-#include "Audio/AudioDelayExt.h"
-#include "Audio/AudioMixer.h"
-#include "Audio/AudioPassthrough.h"
-#include <Audio.h>
+#include "../Audio/AudioDelayExt.h"
 
 extern "C" uint8_t external_psram_size;
 
@@ -19,11 +12,11 @@ public:
   }
   void Start() {
     for (int ch = 0; ch < Channels; ch++) {
-      channels[ch].Start(ch, input_stream, output_stream);
+      channels[ch].Start(this, ch, input_stream, output_stream);
     }
     if (Channels == STEREO) {
       ForEachChannel(ch) {
-        ping_pong_conns[ch].connect(
+        PatchCable(
           channels[ch].taps_mixer, 0, channels[1 - ch].input_mixer, PP_CH
         );
         channels[1 - ch].input_mixer.gain(PP_CH, 0.0f);
@@ -32,14 +25,15 @@ public:
     set_taps(taps);
     MAX_DELAY_SECS = channels[0].delaystream.MAX_DELAY_SECS;
     MIN_DELAY_SECS = channels[0].delaystream.MIN_DELAY_SECS;
+    clock_source.source = -2; // CLK1
   }
 
   void Unload() {
     /* what if we just... kept it forever?
      * the problem is, unloading & reloading is slow when jumping presets
+     */
     for (auto& ch : channels) ch.Stop();
     AllowRestart();
-    */
   }
 
   void Controller() {
@@ -97,7 +91,7 @@ public:
           ch.delaystream.feedback(tap, 0.0f);
         }
       } else {
-        ch.input_mixer.gain(0, 1.0f);
+        //ch.input_mixer.gain(0, 1.0f);
         for (int tap = 0; tap < 9; tap++) {
           ch.delaystream.feedback(tap, tap < taps ? fb : 0.0f);
         }
@@ -116,14 +110,24 @@ public:
         );
       }
     }
+
     float dry_gain, wet_gain;
     EqualPowerFade(
       dry_gain, wet_gain, constrain(0.01f * wet + wet_cv.InF(), 0.0f, 1.0f)
     );
 
-    for (auto& ch : channels) {
-      ch.wet_dry_mixer.gain(WD_WET_CH, wet_gain);
-      ch.wet_dry_mixer.gain(WD_DRY_CH, dry_gain);
+    if (send_mode) {
+      for (auto& ch : channels) {
+        ch.wet_dry_mixer.gain(WD_WET_CH, 1.0f);
+        ch.wet_dry_mixer.gain(WD_DRY_CH, 1.0f);
+        ch.input_mixer.gain(0, wet_gain);
+      }
+    } else {
+      for (auto& ch : channels) {
+        ch.wet_dry_mixer.gain(WD_WET_CH, wet_gain);
+        ch.wet_dry_mixer.gain(WD_DRY_CH, dry_gain);
+        ch.input_mixer.gain(0, 1.0f);
+      }
     }
   }
 
@@ -156,14 +160,17 @@ public:
       case CLOCK:
         gfxStartCursor();
         gfxPrint(clock_source);
+        if (clock_source.source < 0)
+          gfxPrint(1 + 3*(clock_source.source==-1));
         gfxEndCursor(cursor == CLOCK_SOURCE);
-        gfxPrint(" ");
+        if (clock_source.source >= 0)
+          gfxPrint(" ");
 
         gfxStartCursor();
         if (ratio < 0) {
-          graphics.printf("X %d", -ratio + 1);
+          graphics.printf("x%d", -ratio + 1);
         } else {
-          graphics.printf("/ %d", ratio + 1);
+          graphics.printf("/%d", ratio + 1);
         }
         gfxEndCursor(cursor == TIME);
 
@@ -191,10 +198,10 @@ public:
     // if (frozen) gfxInvert(54, 25, 8, 8);
     // if (cursor == FREEZE) gfxCursor(54, 32, 8);
 
-    gfxPrint(1, 35, "Wet:");
+    gfxPrint(1, 35, send_mode?"Snd:":"Wet:");
     gfxStartCursor(param_right_x - 4 * 6, 35);
     graphics.printf("%3d%%", wet);
-    gfxEndCursor(cursor == WET);
+    gfxEndCursor(cursor == WET, true);
 
     gfxStartCursor();
     gfxPrint(wet_cv);
@@ -212,6 +219,10 @@ public:
     gfxDisplayInputMapEditor();
   }
 
+  void AuxButton() override {
+    if (cursor == WET) send_mode ^= 1;
+    CancelEdit();
+  }
   void OnButtonPress() override {
     if (CheckEditInputMapPress(
           cursor,
@@ -226,8 +237,13 @@ public:
   void OnEncoderMove(int direction) override {
     if (!EditMode()) {
       MoveCursor(cursor, direction, CURSOR_LENGTH - 1);
+      // cursor position 0 is the clock source, which is hidden if not using
+      // clocked time units... so we try to skip over it for cursor wrap mode,
+      // otherwise just increment. smh my head.
       if (cursor == CLOCK_SOURCE && time_units != CLOCK)
         MoveCursor(cursor, direction, CURSOR_LENGTH - 1);
+      if (cursor == CLOCK_SOURCE && time_units != CLOCK)
+        ++cursor;
       return;
     }
     if (EditSelectedInputMap(direction)) return;
@@ -274,19 +290,16 @@ public:
         delay_time_cv.ChangeSource(direction);
         break;
       case TIME_MOD:
-        delay_mod_type += direction;
-        CONSTRAIN(delay_mod_type, 0, 1);
+        delay_mod_type = constrain(delay_mod_type + direction, 0, 1);
         break;
       case FEEDBACK:
-        feedback += direction;
-        CONSTRAIN(feedback, Channels == STEREO ? -100 : 0, 100);
+        feedback = constrain(feedback + direction, Channels == STEREO ? -100 : 0, 100);
         break;
       case FEEDBACK_CV:
         feedback_cv.ChangeSource(direction);
         break;
       case WET:
-        wet += direction;
-        CONSTRAIN(wet, 0, 100);
+        wet = constrain(wet + direction, 0, 100);
         break;
       case WET_CV:
         wet_cv.ChangeSource(direction);
@@ -302,7 +315,7 @@ public:
 
 #define DELAY_PARAMS \
   delay_time, pack<3>(time_units), ratio, pack<1>(delay_mod_type), feedback, \
-    wet, pack<4>(taps)
+    wet, pack<4>(taps), pack<1>(send_mode)
 
   void OnDataRequest(std::array<uint64_t, CONFIG_SIZE>& data) override {
     data[0] = PackPackables(DELAY_PARAMS);
@@ -420,7 +433,8 @@ private:
   uint32_t clock_count = 0;
   float clock_base_secs = 0.0f;
 
-  boolean frozen = false;
+  bool send_mode = false;
+  bool frozen = false;
 
   int16_t knob_accel = 0;
   elapsedMillis millis_since_turn;
@@ -438,28 +452,20 @@ private:
     AudioMixer<8> taps_mixer;
     AudioMixer<2> wet_dry_mixer;
 
-    AudioConnection mixer_to_delay{input_mixer, 0, delaystream, 0};
-    AudioConnection wet_conn{taps_mixer, 0, wet_dry_mixer, WD_WET_CH};
-
-    AudioConnection input_to_mixer;
-    AudioConnection taps_conns[8];
-    AudioConnection tap_mixer_to_mixer;
-    AudioConnection dry_conn;
-    AudioConnection mix_to_output;
-
     DelayChannel()
       : delaystream(external_psram_size ? DELAY_LENGTH : DELAY_LENGTH / 16) {}
 
-    void Start(int channel, AudioStream& input, AudioStream& output) {
+    void Start(HemisphereAudioApplet* owner, int channel, AudioStream& input, AudioStream& output) {
       delaystream.Acquire();
 
-      input_to_mixer.connect(input, channel, input_mixer, 0);
+      owner->PatchCable(input, channel, input_mixer, 0);
       for (int i = 0; i < 8; i++) {
-        taps_conns[i].connect(delaystream, i, taps_mixer, i);
+        owner->PatchCable(delaystream, i, taps_mixer, i);
       }
-
-      dry_conn.connect(input, channel, wet_dry_mixer, WD_DRY_CH);
-      mix_to_output.connect(wet_dry_mixer, 0, output, channel);
+      owner->PatchCable(input_mixer, 0, delaystream, 0);
+      owner->PatchCable(taps_mixer, 0, wet_dry_mixer, WD_WET_CH);
+      owner->PatchCable(input, channel, wet_dry_mixer, WD_DRY_CH);
+      owner->PatchCable(wet_dry_mixer, 0, output, channel);
     }
 
     void Stop() {
@@ -467,8 +473,6 @@ private:
     }
   } channels[Channels];
   AudioPassthrough<Channels> output_stream;
-
-  AudioConnection ping_pong_conns[2];
 
   // [-4,-2]=>-1, [-1,1]=>0, [2,4]=>1, etc
   int16_t semitones_to_div(int16_t semis) {

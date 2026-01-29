@@ -18,9 +18,7 @@
 #include "applets/ASR.h"
 #include "applets/AttenuateOffset.h"
 #include "applets/Binary.h"
-#ifdef PEWPEWPEW
 #include "applets/BootsNCat.h"
-#endif
 #include "applets/Brancher.h"
 #include "applets/BugCrack.h"
 #include "applets/Burst.h"
@@ -40,6 +38,7 @@
 #include "applets/ClockSetup.h"
 #endif
 #include "applets/ClockSkip.h"
+#include "applets/Combin8.h"
 #include "applets/Compare.h"
 #include "applets/DivSeq.h"
 #include "applets/DivSeq10.h"
@@ -62,7 +61,6 @@
 #include "applets/LowerRenz.h"
 #include "applets/Metronome.h"
 #include "applets/MidiLoop.h"
-#include "applets/MixerBal.h"
 #include "applets/MultiScale.h"
 #include "applets/Palimpsest.h"
 #include "applets/Pigeons.h"
@@ -102,6 +100,7 @@
 #ifdef PEWPEWPEW
 #include "applets/WTVCO.h"
 #endif
+#include "applets/Xfader.h"
 #include "applets/hMIDIIn.h"
 #include "applets/hMIDIOut.h"
 
@@ -143,9 +142,7 @@ AppletRegistry reg{
     DeclareApplet<AttenuateOffset>{56, 0x10},
     DeclareApplet<Binary>{41, 0x41},
     DeclareApplet<BitBeat>{79, 0x01},
-#ifdef PEWPEWPEW
     DeclareApplet<BootsNCat>{55, 0x80},
-#endif
     DeclareApplet<Brancher>{4, 0x14},
     DeclareApplet<BugCrack>{51, 0x80},
     DeclareApplet<Burst>{31, 0x04},
@@ -157,6 +154,7 @@ AppletRegistry reg{
     DeclareApplet<ClockDivider>{6, 0x04},
     DeclareApplet<ClkToGate>{78, 0x04},
     DeclareApplet<ClockSkip>{28, 0x04},
+    DeclareApplet<Combin8>{82, 0x10},
     DeclareApplet<Compare>{30, 0x10},
     DeclareApplet<Cumulus>{5, 0x40},
     DeclareApplet<CVRecV2>{24, 0x02},
@@ -181,7 +179,6 @@ AppletRegistry reg{
     DeclareApplet<MidiLoop>{81, 0x20},
     DeclareApplet<hMIDIIn>{150, 0x20},
     DeclareApplet<hMIDIOut>{27, 0x20},
-    DeclareApplet<MixerBal>{33, 0x10},
     DeclareApplet<MultiScale>{73, 0x08},
     DeclareApplet<Palimpsest>{20, 0x02},
     DeclareApplet<Pigeons>{71, 0x02},
@@ -222,6 +219,7 @@ AppletRegistry reg{
 #ifdef PEWPEWPEW
     DeclareApplet<WTVCO>{67, 0x80},
 #endif
+    DeclareApplet<Xfader>{33, 0x10},
 };
 
 

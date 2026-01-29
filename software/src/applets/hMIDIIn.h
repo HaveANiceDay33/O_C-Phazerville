@@ -128,6 +128,7 @@ public:
             map.function = HEM_MIDI_LEARN;
             map.function_cc = -1; // auto-learn MIDI CC or precise NoteOn
             frame.MIDIState.clock_count = 0;
+            frame.MIDIState.UpdateMidiChannelFilter();
             break;
           }
         default: break;
@@ -157,9 +158,7 @@ public:
                 break;
             case hMIDIIn_A_OUTPUT_MODE:
             case hMIDIIn_B_OUTPUT_MODE:
-                map.function = constrain(map.function + direction, 0, HEM_MIDI_MAX_FUNCTION);
-                if (map.function == HEM_MIDI_CC_OUT)
-                  map.function_cc = -1; // auto-learn MIDI CC
+                map.AdjustFunction(direction);
                 frame.MIDIState.UpdateMidiChannelFilter();
                 break;
             case hMIDIIn_A_POLY_VOICE:

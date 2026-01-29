@@ -10,6 +10,7 @@
 #pragma once
 
 #include <vector>
+#include "OC_config.h"
 #include "HSMIDI.h"
 #include "HSUtils.h"
 #include "OC_DAC.h"
@@ -104,6 +105,18 @@ struct MIDIMapping : public MIDIMapSettings {
     return (note >= range_low && note <= range_high);
   }
 
+  void AdjustChannel(int dir) {
+    channel = constrain(channel + dir, 0, 16);
+  }
+  void AdjustFunction(int dir) {
+    function = constrain(function + dir, 0, HEM_MIDI_MAX_FUNCTION);
+    if (function == HEM_MIDI_CC_OUT)
+      function_cc = -1; // auto-learn MIDI CC
+  }
+
+  void AdjustVoice(int dir) {
+    dac_polyvoice = constrain(dac_polyvoice + dir, 0, DAC_CHANNEL_COUNT - 1);
+  }
   void AdjustTranspose(int dir) {
     transpose = constrain(transpose + dir, -24, 24);
   }
@@ -488,9 +501,12 @@ struct MIDIFrame {
 // shared IO Frame, updated every tick
 // this will allow chaining applets together, multiple stages of processing
 struct IOFrame {
+    static constexpr int EXTRA_PRECISION = 4;
+
     // settings
     bool autoMIDIOut = false;
     uint8_t clockskip[DAC_CHANNEL_COUNT] = {0};
+    int8_t output_slew[DAC_CHANNEL_COUNT] = {0};
 
     // pre-calculated clocks, subject to trigger mapping
     bool clocked[OC::DIGITAL_INPUT_LAST + ADC_CHANNEL_COUNT];
@@ -500,9 +516,9 @@ struct IOFrame {
     int inputs[ADC_CHANNEL_COUNT];
 
     // output value cache, countdowns
-    int outputs[DAC_CHANNEL_COUNT];
+    int outputs[DAC_CHANNEL_COUNT]; // now with Extra Precision!
     int output_diff[DAC_CHANNEL_COUNT];
-    int outputs_smooth[DAC_CHANNEL_COUNT];
+    int outputs_target[DAC_CHANNEL_COUNT];
     int clock_countdown[DAC_CHANNEL_COUNT];
     int adc_lag_countdown[ADC_CHANNEL_COUNT]; // Time between a clock event and an ADC read event
     // calculated values
@@ -518,20 +534,27 @@ struct IOFrame {
       MIDIState.Init();
     }
 
+    const int ViewOut(DAC_CHANNEL ch) const { return outputs[ch] >> EXTRA_PRECISION; }
+
     // --- Soft IO ---
-    void Out(DAC_CHANNEL channel, int value) {
-        output_diff[channel] += value - outputs[channel];
-        outputs[channel] = value;
+    void Out(DAC_CHANNEL channel, int value, bool override = false) {
+        output_diff[channel] += value - outputs_target[channel];
+        outputs_target[channel] = value;
+        if (override) outputs[channel] = value << EXTRA_PRECISION;
     }
     void ClockOut(DAC_CHANNEL ch, const int pulselength = HEMISPHERE_CLOCK_TICKS * trig_length) {
         // short circuit if skip probability is zero to avoid consuming random numbers
         if (0 == clockskip[ch] || random(100) >= clockskip[ch]) {
             clock_countdown[ch] = pulselength;
-            outputs[ch] = PULSE_VOLTAGE * (12 << 7);
+            // assign to both to override slew - instant attack
+            Out(ch, HEMISPHERE_MAX_CV, true);
         }
     }
     void NudgeSkip(int ch, int dir) {
         clockskip[ch] = constrain(clockskip[ch] + dir, 0, 100);
+    }
+    void NudgeSlew(int ch, int dir) {
+        output_slew[ch] = constrain(output_slew[ch] + dir, 0, 100);
     }
 
     // --- Hard IO ---
@@ -544,9 +567,25 @@ struct IOFrame {
           DAC_CHANNEL_E, DAC_CHANNEL_F, DAC_CHANNEL_G, DAC_CHANNEL_H,
 #endif
         };
+
         for (int i = 0; i < DAC_CHANNEL_COUNT; ++i) {
-            OC::DAC::set_pitch_scaled(chan[i], outputs[i], 0);
+          const int target = outputs_target[i] << EXTRA_PRECISION;
+          if (output_slew[i]) {
+            int diff = target - outputs[i];
+            int delta = 1;
+            if (output_slew[i] <= 50)
+              delta += 250 - 4*output_slew[i];
+            else
+              delta += 100 - output_slew[i];
+            CONSTRAIN(delta, 0, abs(diff));
+            if (diff < 0) delta = -delta;
+            outputs[i] += delta;
+          } else
+            outputs[i] = target;
+
+          OC::DAC::set_pitch_scaled(chan[i], outputs[i] >> EXTRA_PRECISION, 0);
         }
+        // oh no, this is certainly broken now...
         if (autoMIDIOut) MIDIState.Send(outputs);
     }
 
@@ -554,6 +593,6 @@ struct IOFrame {
 
 extern IOFrame frame;
 
-#include <CVInputMap.h>
+#include "CVInputMap.h"
 
 } // namespace HS

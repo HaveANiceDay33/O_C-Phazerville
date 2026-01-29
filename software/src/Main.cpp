@@ -49,7 +49,7 @@
 
 USBHost thisUSB;
 USBHub hub1(thisUSB);
-MIDIDevice usbHostMIDI(thisUSB);
+MIDIDevice_BigBuffer usbHostMIDI(thisUSB);
 
 #if defined(ARDUINO_TEENSY41)
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial8, MIDI1);
@@ -245,6 +245,9 @@ void FASTRUN loop() {
   OC::CORE::app_loop_enabled = true;
   uint32_t menu_redraws = 0;
   while (true) {
+#ifdef __IMXRT1062__
+    thisUSB.Task();
+#endif
 
     // Refresh display
     if (MENU_REDRAW && OC::CORE::display_update_enabled) {
@@ -278,6 +281,9 @@ void FASTRUN loop() {
     // Run current app
     if (OC::CORE::app_loop_enabled)
       OC::apps::current_app->loop();
+
+    // Take care of queued tasks
+    OC::CORE::FlushTasks();
 
     // UI events
     if (OC::UI_MODE_APP_SETTINGS == ui_mode) {

@@ -60,12 +60,21 @@ int DAC::kOctaveZero = 3;
 void DAC::Init(CalibrationData *calibration_data, bool flip180) {
 
   calibration_data_ = calibration_data;
-  
+
   restore_scaling(0x0);
   if (flip180) {
 #if defined(__IMXRT1062__) && defined(ARDUINO_TEENSY41)
-    DAC_CHANNEL_A=7, DAC_CHANNEL_B=6, DAC_CHANNEL_C=5, DAC_CHANNEL_D=4;
-    DAC_CHANNEL_E=3, DAC_CHANNEL_F=2, DAC_CHANNEL_G=1, DAC_CHANNEL_H=0;
+    DAC_CHANNEL temp1 = DAC_CHANNEL_A, temp2 = DAC_CHANNEL_B,
+                temp3 = DAC_CHANNEL_C, temp4 = DAC_CHANNEL_D;
+
+    DAC_CHANNEL_A = DAC_CHANNEL_H;
+    DAC_CHANNEL_B = DAC_CHANNEL_G;
+    DAC_CHANNEL_C = DAC_CHANNEL_F;
+    DAC_CHANNEL_D = DAC_CHANNEL_E;
+    DAC_CHANNEL_E = temp4;
+    DAC_CHANNEL_F = temp3;
+    DAC_CHANNEL_G = temp2;
+    DAC_CHANNEL_H = temp1;
 #else
     DAC_CHANNEL_A=3, DAC_CHANNEL_B=2, DAC_CHANNEL_C=1, DAC_CHANNEL_D=0;
 #endif
@@ -226,19 +235,18 @@ void DAC::set_scaling(uint8_t scaling, uint8_t channel_id) {
 }
 /*static*/
 void DAC::restore_scaling(uint32_t scaling) {
-  
   // restore scaling from global settings
   for (int i = 0; i < DAC_CHANNEL_COUNT; i++) {
-    uint8_t _scaling = (scaling >> (i * 8)) & 0xFF;
+    uint8_t _scaling = (scaling >> (i * 32/DAC_CHANNEL_COUNT)) & 0x0F;
     set_scaling(_scaling, i);
   }
 }
 uint32_t DAC::store_scaling() {
 
   uint32_t _scaling = 0;
-  // merge values into uint32_t : 
+  // merge values into uint32_t :
   for (int i = 0; i < DAC_CHANNEL_COUNT; i++)
-    _scaling |= (DAC_scaling[i] << (i * 8)); 
+    _scaling |= (DAC_scaling[i] << (i * 32/DAC_CHANNEL_COUNT));
   return _scaling;
 }
 

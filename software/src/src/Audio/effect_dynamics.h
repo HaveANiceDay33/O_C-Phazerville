@@ -31,8 +31,8 @@
 
 #if !defined(KINETISL)
 
-#include "Arduino.h"
-#include "AudioStream.h"
+#include <Arduino.h>
+#include <AudioStream.h>
 
 #define MIN_DB	-110.0f
 #define MAX_DB	0.0f
@@ -145,7 +145,7 @@ public:
 	void makeupGain(float gain = 0.0f) {
 
 		mgAutoEnabled = false;
-		makeupdb = constrain(gain, -12.0f, 24.0f);
+		makeupdb = constrain(gain, -12.0f, 30.0f);
 	}
 
 private:
@@ -186,7 +186,7 @@ private:
 	float aOneMinusLimitAttack;
 	float aLimitRelease;
 	const static unsigned int sampleBufferSize = AUDIO_SAMPLE_RATE / 10; // number of samples to use for running RMS calulation = 1/10th of a second
-	u_int64_t sumOfSamplesSquared = 0;
+	uint64_t sumOfSamplesSquared = 0;
 	uint32_t* samplesSquared;
 	uint16_t sampleIndex = 0;
 

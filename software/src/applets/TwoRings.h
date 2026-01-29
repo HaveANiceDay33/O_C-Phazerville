@@ -263,8 +263,8 @@ public:
     }
 
     void View() {
-        DrawSelector();
         DrawIndicator();
+        DrawSelector();
     }
 
     // void DrawFullScreen() { }
@@ -308,9 +308,8 @@ public:
             break;
         case QUANT_A:
         case QUANT_B:
-            HS::qview = qselect[cursor - QUANT_A] =
+            qselect[cursor - QUANT_A] =
               constrain(qselect[cursor - QUANT_A] + direction, 0, QUANT_CHANNEL_COUNT - 1);
-            HS::PokePopup(QUANTIZER_POPUP);
             break;
         case RANGE:
             range = constrain(range + direction, 1, 32);
@@ -400,7 +399,7 @@ private:
     uint32_t reg[2]; // 32-bit sequence registers
     uint32_t reg_snap[2]; // for resetting
     bool reset_active = false;
-    bool rotate_right = true;
+    bool rotate_right = false;
 
     // most recent output values
     int Output[2] = {0, 0};
@@ -575,20 +574,32 @@ private:
 
         // TODO: generalize this as a cursor LUT for all applets
         switch ((TM2Cursor)cursor) {
-            case LENGTH: gfxSpicyCursor(11, 23, 13); break;
-            case PROB:   gfxSpicyCursor(35, 23, 19); break;
-            case QUANT_A:  gfxSpicyCursor(12, 33, 13); break;
-            case QUANT_B:  gfxSpicyCursor(39, 33, 13); break;
-            case RANGE:  gfxCursor(10, 43, 13); break;
-            case SLEW:   gfxCursor(44, 43, 19); break;
+            case LENGTH: gfxSpicyCursor(11, 23, 13, "Length"); break;
+            case PROB:   gfxSpicyCursor(35, 23, 19, "Prob"); break;
+            case QUANT_A:
+            case QUANT_B: {
+              const int ch = (cursor-QUANT_A);
+              gfxSpicyCursor(12 + 27 * ch, 33, 13);
+              gfxIcon(25 + 5 * ch, 25, ch ? RIGHT_ICON : LEFT_ICON);
+              if (EditMode()) {
+                gfxPrint(20, 35, HS::GetQuantEngine(qselect[ch]));
+              }
+              break;
+            }
 
+            case RANGE:  gfxCursor(10, 43, 13, "Range"); break;
+            case SLEW:   gfxCursor(44, 43, 19, "Slew"); break;
+
+            // TODO: mode labels array
             case CVMODE1:
             case CVMODE2:
-                gfxCursor(14 + 34*(cursor-CVMODE1), 33, 10);
+                gfxCursor(14 + 34*(cursor-CVMODE1), 33, 10, cvmode_names[cvmode[cursor-CVMODE1]]);
                 break;
 
-            case OUT_A:  gfxCursor(14, 43, 10); break;
-            case OUT_B:  gfxCursor(48, 43, 10); break;
+            case OUT_A:
+            case OUT_B:
+                gfxCursor(14 + 34*(cursor-OUT_A), 43, 10, outmode_names[outmode[cursor-OUT_A]]);
+                break;
 
             default: break;
         }

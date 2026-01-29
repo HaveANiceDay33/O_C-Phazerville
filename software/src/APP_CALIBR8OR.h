@@ -312,7 +312,6 @@ public:
         }
 
 #if defined(__IMXRT1062__) && defined(ARDUINO_TEENSY41)
-        thisUSB.Task();
         while (usbHostMIDI.read()) {
             const uint8_t message = usbHostMIDI.getType();
             const uint8_t data1 = usbHostMIDI.getData1();
@@ -881,7 +880,8 @@ void Calibr8or_handleButtonEvent(const UI::Event &event) {
           else if (event.control == OC::CONTROL_BUTTON_DOWN)
             HS::NudgeOctave(HS::qview, -1);
           else {
-            HS::q_edit = false;
+            HS::q_edit = 0;
+            HS::popup_tick = 0;
           }
 
           OC::ui.SetButtonIgnoreMask();

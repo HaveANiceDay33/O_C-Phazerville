@@ -256,6 +256,7 @@ DMAMEM AppDataStorage app_data_storage;
 static constexpr int DEFAULT_APP_INDEX = 1;
 static const uint16_t DEFAULT_APP_ID = available_apps[DEFAULT_APP_INDEX].id;
 
+FLASHMEM
 void save_global_settings() {
   SERIAL_PRINTLN("Saving global settings...");
 
@@ -265,6 +266,7 @@ void save_global_settings() {
 
   // Metadata
   uint64_t data = 0;
+  global_settings.DAC_scaling = OC::DAC::store_scaling();
   Pack(data, PackLocation{0, 16}, global_settings.current_app_id);
   Pack(data, PackLocation{16, 1}, global_settings.encoders_enable_acceleration);
   // 15 bits empty...
@@ -390,6 +392,7 @@ static constexpr size_t total_storage_size() {
 static constexpr size_t totalsize = total_storage_size();
 static_assert(totalsize < OC::AppData::kAppDataSize, "EEPROM Allocation Exceeded");
 
+FLASHMEM
 void save_app_data() {
   save_global_settings(); // yeah, why not
 
@@ -427,6 +430,7 @@ void save_app_data() {
   SERIAL_PRINTLN("Saved app settings in page_index %d", app_data_storage.page_index());
 }
 
+FLASHMEM
 void restore_app_data() {
   SERIAL_PRINTLN("Restoring app data from page_index %d, used=%u", app_data_storage.page_index(), app_settings.used);
 
@@ -475,6 +479,7 @@ void restore_app_data() {
 
 namespace apps {
 
+FLASHMEM
 void set_current_app(int index) {
   current_app = &available_apps[index];
   global_settings.current_app_id = current_app->id;
@@ -501,6 +506,7 @@ int index_of(uint16_t id) {
   return i;
 }
 
+FLASHMEM
 void Init(bool reset_settings) {
 
   Scales::Init();
@@ -516,6 +522,7 @@ void Init(bool reset_settings) {
   global_settings.reserved0 = false;
   global_settings.reserved1 = false;
   global_settings.DAC_scaling = VOLTAGE_SCALING_1V_PER_OCT;
+  memset(HS::user_turing_machines, 0, sizeof(HS::user_turing_machines));
 
   if (reset_settings) {
     if (ui.ConfirmReset()) {
@@ -548,6 +555,7 @@ void Init(bool reset_settings) {
       global_settings.encoders_enable_acceleration = Unpack(data, PackLocation{16, 1});
       // 15 bits empty...
       global_settings.DAC_scaling = Unpack(data, PackLocation{32, 32});
+      OC::DAC::restore_scaling(global_settings.DAC_scaling);
 
       // User Scales
       for (size_t i = 0; i < Scales::SCALE_USER_COUNT; ++i) {
@@ -647,7 +655,6 @@ void Init(bool reset_settings) {
       memcpy(user_patterns, global_settings.user_patterns, sizeof(user_patterns));
 #ifdef ENABLE_APP_CHORDS
       memcpy(user_chords, global_settings.user_chords, sizeof(user_chords));
-      Chords::Validate();
 #else
       memcpy(HS::user_turing_machines, global_settings.user_turing_machines, sizeof(HS::user_turing_machines));
 #endif
@@ -655,7 +662,6 @@ void Init(bool reset_settings) {
       memcpy(auto_calibration_data, global_settings.auto_calibration_data, sizeof(auto_calibration_data));
       DAC::choose_calibration_data(); // either use default data, or auto_calibration_data
       DAC::restore_scaling(global_settings.DAC_scaling); // recover output scaling settings
-      Scales::Validate();
 
       // restore q_engines and midi_maps
       for (int i = 0; i < QUANT_CHANNEL_COUNT; ++i) {
@@ -693,6 +699,14 @@ void Init(bool reset_settings) {
     }
   }
 
+  // Validation to guard against junk data
+  Chords::Validate();
+  Scales::Validate();
+  WaveformManager::Validate();
+  for (int i = 0; i < HS::TURING_MACHINE_COUNT; ++i) {
+    HS::user_turing_machines[i].Validate();
+  }
+
   int current_app_index = apps::index_of(global_settings.current_app_id);
   if (current_app_index < 0 || current_app_index >= NUM_AVAILABLE_APPS) {
     SERIAL_PRINTLN("App id %02x not found, using default!", global_settings.current_app_id);
@@ -720,6 +734,7 @@ void draw_save_message(uint8_t c) {
   GRAPHICS_END_FRAME();
 }
 
+FLASHMEM
 bool Ui::AppSettings(bool drawmenu) {
   static menu::ScreenCursor<5> cursor;
   static bool change_app = false;
@@ -844,6 +859,7 @@ bool Ui::AppSettings(bool drawmenu) {
   return false; // close menu
 }
 
+FLASHMEM
 bool Ui::ConfirmReset() {
 
   SetButtonIgnoreMask();
@@ -886,6 +902,7 @@ bool Ui::ConfirmReset() {
   return confirm;
 }
 
+FLASHMEM
 void start_calibration() {
   OC::apps::set_current_app(0); // switch to Settings app
   Settings_instance.StartCalibration(); // Set up calibration mode in Settings app

@@ -211,8 +211,7 @@ UiMode Ui::Splashscreen(bool &reset_settings) {
 
   UiMode mode = UI_MODE_MENU;
 
-  unsigned long start = millis();
-  unsigned long now = start;
+  elapsedMillis timeout = 0;
   do {
 
     mode = UI_MODE_MENU;
@@ -227,8 +226,6 @@ UiMode Ui::Splashscreen(bool &reset_settings) {
     #else
        read_immediate(CONTROL_BUTTON_UP) && read_immediate(CONTROL_BUTTON_DOWN);
     #endif
-
-    now = millis();
 
     GRAPHICS_BEGIN_FRAME(true);
 
@@ -266,13 +263,13 @@ UiMode Ui::Splashscreen(bool &reset_settings) {
     };
 
     static int pick = 0;
-    if (now % 50 == 0) pick = random(6);
+    if (timeout % 50 == 0) pick = random(6);
     // pew pew?
     for (int i = 0; i < 124; i+=8)
       graphics.drawBitmap8(i, 56, 8, iconroulette[pick]);
 
     // chargin mah lazerrrr
-    weegfx::coord_t w = (now-start)*128 / (SPLASHSCREEN_DELAY_MS/6);
+    weegfx::coord_t w = timeout * 128 / SPLASHSCREEN_DELAY_MS;
     w %= 256;
     if (w > 128) w = 256 - w;
     graphics.invertRect(0, 56, w, 8);
@@ -283,7 +280,26 @@ UiMode Ui::Splashscreen(bool &reset_settings) {
 
     GRAPHICS_END_FRAME();
 
-  } while (now - start < SPLASHSCREEN_DELAY_MS);
+  } while (timeout < SPLASHSCREEN_DELAY_MS);
+
+  do {
+    GRAPHICS_BEGIN_FRAME(true);
+    for (int i=0; i<128; ++i) {
+      graphics.drawBitmap8(i*8%128 + random(2), i/16*8 + random(2), 8, ZAP_ICON);
+    }
+
+    graphics.clearRect(27, 22, 74, 22);
+    graphics.setPrintPos(28, 23);
+    graphics.print(" Welcome to");
+    graphics.setPrintPos(28, 33);
+    graphics.print("Phazerville!");
+    //graphics.print(OC::Strings::RELEASE_NAME);
+
+    while (event_queue_.available())
+      (void)event_queue_.PullEvent();
+    GRAPHICS_END_FRAME();
+    delay(5);
+  } while (timeout < SPLASHSCREEN_DELAY_MS*3/2);
 
   SetButtonIgnoreMask();
   return mode;

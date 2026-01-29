@@ -17,13 +17,14 @@ using simfloat = int32_t;
 #endif
 
 // Reference Constants
+#define ONE_OCTAVE (12 << 7)
 #define PULSE_VOLTAGE HS::octave_max
-#define HEMISPHERE_MAX_CV (HS::octave_max * 12 << 7)
-#define HEMISPHERE_MIN_CV (-OC::DAC::kOctaveZero * (12 << 7))
+#define HEMISPHERE_MAX_CV (HS::octave_max * ONE_OCTAVE)
+#define HEMISPHERE_MIN_CV (-OC::DAC::kOctaveZero * ONE_OCTAVE*(1+DAC_20Vpp))
 #define HEMISPHERE_CENTER_CV ((HEMISPHERE_MAX_CV-HEMISPHERE_MIN_CV)/2)
-#define HEMISPHERE_3V_CV 4608
+#define HEMISPHERE_3V_CV (3 * ONE_OCTAVE)
 #define HEMISPHERE_CENTER_INPUT_CV (NorthernLightModular*HEMISPHERE_MAX_CV/2)
-#define HEMISPHERE_MAX_INPUT_CV (9216 + NorthernLightModular*(4*12<<7)) // 6V or 10V
+#define HEMISPHERE_MAX_INPUT_CV (6*ONE_OCTAVE + NorthernLightModular*(4*ONE_OCTAVE)) // 6V or 10V
 #define HEMISPHERE_CENTER_DETENT 80
 #define HEMISPHERE_CLOCK_TICKS 17 // one millisecond
 #define HEMISPHERE_CURSOR_TICKS 5000
@@ -49,9 +50,13 @@ namespace HS {
     LEFT2_HEMISPHERE = 2,
     RIGHT2_HEMISPHERE = 3,
 #endif
+    GLOBAL_CURSOR,
+    GLOBAL_CURSOR_EXTRA,
+    AUDIO_SLOT_L,
+    AUDIO_SLOT_R,
 
-    APPLET_SLOTS,
-    GLOBAL_CURSOR = APPLET_SLOTS,
+    APPLET_CURSOR_COUNT,
+    APPLET_SLOTS = GLOBAL_CURSOR,
   };
 
   // Codes for help system labels
@@ -83,6 +88,7 @@ namespace HS {
     MENU_POPUP,
     CLOCK_POPUP, PRESET_POPUP,
     QUANTIZER_POPUP,
+    MIDI_POPUP,
     MESSAGE_POPUP,
 
     POPUP_TYPE_COUNT
@@ -172,10 +178,10 @@ namespace HS {
 
     int Process(int cv, int root, int transpose) {
       if (root == 0) root = (root_note << 7);
-      return quantizer.Process(cv, root, transpose) + (octave * 12 << 7);
+      return quantizer.Process(cv, root, transpose) + (octave * ONE_OCTAVE);
     }
     int Lookup(int note) {
-      return quantizer.Lookup(note) + (root_note << 7) + (octave * 12 << 7);
+      return quantizer.Lookup(note) + (root_note << 7) + (octave * ONE_OCTAVE);
     }
 
     const int Size() {
@@ -183,10 +189,15 @@ namespace HS {
     }
   };
 
+  struct DigitalInputMap;
+  struct CVInputMap;
+
   extern uint32_t popup_tick; // for button feedback
   extern PopupType popup_type;
   extern uint8_t qview; // which quantizer's setting is shown in popup
   extern int q_edit;
+  extern int midi_edit;
+  extern uint8_t mview;
   extern ErrMsgIndex msg_idx;
 
   // input quantizers, because sometimes we need hysteresis
@@ -215,6 +226,7 @@ namespace HS {
   void DrawAppletList(bool blink = false);
 
   // --- Quantizer helpers
+  QuantEngine& GetQuantEngine(int ch);
   int GetLatestNoteNumber(int ch);
   int Quantize(int ch, int cv, int root = 0, int transpose = 0);
   int QuantizerLookup(int ch, int note);
@@ -226,7 +238,9 @@ namespace HS {
   void NudgeOctave(int ch, int dir);
   void NudgeScale(int ch, int dir);
   void QuantizerEdit(int ch);
+  void MidiMapEdit(int ch);
   void QEditEncoderMove(bool rightenc, int dir);
+  void MEditEncoderMove(bool rightenc, int dir);
   void DrawPopup(const int config_cursor = 0, const int preset_id = 0, const bool blink = 0);
   void ToggleClockRun();
   void PokePopup(PopupType pop, ErrMsgIndex err = NO_ERROR);
@@ -265,6 +279,9 @@ void gfxPrint(int num);
 void gfxPrint(int x_adv, int num);
 void gfxPrintVoltage(int cv);
 void gfxPrintFreqFromPitch(int16_t pitch);
+void gfxPrintIcon(const uint8_t *data, int16_t w = 8);
+void gfxPrint(HS::DigitalInputMap &map);
+void gfxPrint(HS::CVInputMap &map);
 void gfxPixel(int x, int y);
 void gfxFrame(int x, int y, int w, int h, bool dotted = false);
 void gfxRect(int x, int y, int w, int h);

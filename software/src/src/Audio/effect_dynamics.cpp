@@ -28,8 +28,8 @@
 #if defined(ARDUINO_TEENSY41)
 
 #include "effect_dynamics.h"
-#include "utility/dspinst.h"
-#include "utility/sqrt_integer.h"
+#include <utility/dspinst.h>
+#include <utility/sqrt_integer.h>
 
 /*
 static float analyse_rms(int16_t *data) {
@@ -197,8 +197,8 @@ void AudioEffectDynamics::update(void) {
         float totalGain = gatedb + compdb + makeupdb + limitdb;
 
         float multiplier = dbToUnit(totalGain);
-        int16_t result = sample * multiplier;
-        block->data[i] = result;
+        int result = sample * multiplier;
+        block->data[i] = saturate16(result);
         //Apply gain to block
     }
 

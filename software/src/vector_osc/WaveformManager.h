@@ -28,24 +28,23 @@ namespace WaveformManager {
     static VectorOscillator VectorOscillatorFromLibrary(uint8_t waveform_number);
 
     /*
-     * The segment at user_waveforms[0] should have a level of 0xfc, and the time
-     * should have a value of 0xe2. This indicates that the memory is set up for
-     * segment storage. If Validate() is false, then Setup() should be executed.
+     * The segment at user_waveforms[0] should have a level of 0xfc, and the
+     * time should have a value of 0xe2. This indicates that the memory is
+     * properly initialized.
      */
-    bool static Validate() {
-        return (HS::user_waveforms[0].level == 0xfc && HS::user_waveforms[0].time == 0xe2);
-    }
+    void static Validate() {
+      if (HS::user_waveforms[0].level == 0xfc && HS::user_waveforms[0].time == 0xe2)
+        return;
 
-    /* Add a triangle and sawtooth waveform */
-    void static Setup() {
-        HS::user_waveforms[0] = VOSegment {0xfc, 0xe2};
-        HS::user_waveforms[1] = VOSegment {0x02, 0xff}; // TOC entry: 2 steps
-        HS::user_waveforms[2] = VOSegment {0xff, 0x01}; // First segment of triangle
-        HS::user_waveforms[3] = VOSegment {0x00, 0x01}; // Second segment of triangle
-        HS::user_waveforms[4] = VOSegment {0x02, 0xff}; // TOC entry: 2 steps
-        HS::user_waveforms[5] = VOSegment {0xff, 0x00}; // First segment of sawtooth
-        HS::user_waveforms[6] = VOSegment {0x00, 0x01}; // Second segment of sawtooth
-        for (uint8_t i = 7; i < 64; i++) HS::user_waveforms[i] = VOSegment {0x00, 0xff};
+      HS::user_waveforms[0] = VOSegment {0xfc, 0xe2}; // magic validation signature
+      /* Add a triangle and sawtooth waveform */
+      HS::user_waveforms[1] = VOSegment {0x02, 0xff}; // TOC entry: 2 steps
+      HS::user_waveforms[2] = VOSegment {0xff, 0x01}; // First segment of triangle
+      HS::user_waveforms[3] = VOSegment {0x00, 0x01}; // Second segment of triangle
+      HS::user_waveforms[4] = VOSegment {0x02, 0xff}; // TOC entry: 2 steps
+      HS::user_waveforms[5] = VOSegment {0xff, 0x00}; // First segment of sawtooth
+      HS::user_waveforms[6] = VOSegment {0x00, 0x01}; // Second segment of sawtooth
+      for (uint8_t i = 7; i < 64; i++) HS::user_waveforms[i] = VOSegment {0x00, 0xff};
     }
 
     uint8_t static WaveformCount() {
@@ -64,12 +63,12 @@ namespace WaveformManager {
      * in the list.
      */
     uint8_t static GetNextWaveform(uint8_t waveform_number, int direction) {
-        int new_number = waveform_number + direction;
+        int new_number = constrain(waveform_number + direction, 0, HS::WAVEFORM_LIBRARY_COUNT + 31);
         uint8_t count = WaveformCount();
-        if (new_number < 0) new_number = 0;
-        if (new_number == count) new_number = 32; // Move from last user waveform to first library waveform
-        if (new_number <= 31 && new_number >= count) new_number = count - 1; // Move from first library waveform to last user waveform
-        if (new_number >= (HS::WAVEFORM_LIBRARY_COUNT + 32)) new_number = HS::WAVEFORM_LIBRARY_COUNT + 31;
+        // mind the gap
+        while (new_number <= 31 && new_number >= count) {
+          new_number += direction;
+        }
         return new_number;
     }
 

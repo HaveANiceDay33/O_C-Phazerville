@@ -1,7 +1,4 @@
-#include "HSUtils.h"
-#include "HemisphereAudioApplet.h"
-#include "../Audio/effect_dynamics.h"
-#include <cstdint>
+#include "../src/Audio/effect_dynamics.h"
 
 template <AudioChannels Channels>
 class DynamicsApplet : public HemisphereAudioApplet {
@@ -25,8 +22,8 @@ public:
     for (int i = 0; i < Channels; i++) {
       complimit[i].Acquire();
 
-      in_conns[i].connect(input, i, complimit[i], 0);
-      out_conns[i].connect(complimit[i], 0, output, i);
+      PatchCable(input, i, complimit[i], 0);
+      PatchCable(complimit[i], 0, output, i);
 
       SetParams();
     }
@@ -98,7 +95,7 @@ public:
         limit_threshold = constrain(limit_threshold + direction, -100, 0);
         break;
       case OUT_GAIN:
-        makeupgain = constrain(makeupgain + direction, -1, 60);
+        makeupgain = constrain(makeupgain + direction, -1, 30);
         break;
 
       default:
@@ -114,6 +111,7 @@ public:
   }
   void OnDataReceive(uint64_t data) {
     UnpackPackables(data, gate_threshold, comp_threshold, limit_threshold, makeupgain);
+    SetParams();
   }
 
   AudioStream* InputStream() override {
@@ -143,9 +141,6 @@ private:
   //void makeupGain(float gain = 0.0f)
 
   AudioPassthrough<Channels> input;
-  std::array<AudioConnection, Channels> in_conns;
   std::array<AudioEffectDynamics, Channels> complimit;
-  std::array<AudioConnection, Channels> out_conns;
   AudioPassthrough<Channels> output;
-
 };

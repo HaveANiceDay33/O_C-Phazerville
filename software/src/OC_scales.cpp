@@ -1,4 +1,5 @@
 #include "OC_scales.h"
+#include "avr/pgmspace.h"
 
 namespace OC {
 
@@ -6,12 +7,14 @@ Scale user_scales[Scales::SCALE_USER_COUNT];
 Scale dummy_scale;
 
 /*static*/
+FLASHMEM
 void Scales::Init() {
   for (size_t i = 0; i < SCALE_USER_COUNT; ++i)
     memcpy(&user_scales[i], &braids::scales[1], sizeof(Scale));
 }
 
 /*static*/
+FLASHMEM
 void Scales::Validate() {
   // protecc from garbage EEPROM data
   for (size_t i = 0; i < SCALE_USER_COUNT; ++i) {

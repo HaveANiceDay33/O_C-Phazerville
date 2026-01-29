@@ -126,17 +126,20 @@ public:
   //
   // @return DAC output value
   static int32_t pitch_to_dac(DAC_CHANNEL channel, int32_t pitch, int32_t octave_offset) {
-    pitch += (kOctaveZero + octave_offset) * 12 << 7;
-    
-    CONSTRAIN(pitch, 0, (120 << 7));
+    const int interval_size = 12*(1+DAC_20Vpp) << 7;
+    const int max_pitch = OCTAVES * interval_size;
 
-    const int32_t octave = pitch / (12 << 7);
-    const int32_t fractional = pitch - octave * (12 << 7);
+    pitch += (kOctaveZero + octave_offset) * interval_size;
+    
+    CONSTRAIN(pitch, 0, max_pitch);
+
+    const int32_t octave = pitch / interval_size;
+    const int32_t fractional = pitch - octave * interval_size;
 
     int32_t sample = calibration_data_->calibrated_octaves[channel][octave];
     if (fractional) {
       int32_t span = calibration_data_->calibrated_octaves[channel][octave + 1] - sample;
-      sample += (fractional * span) / (12 << 7);
+      sample += (fractional * span) / interval_size;
     }
 
     return sample;
@@ -149,9 +152,11 @@ public:
   }
   
   static int32_t pitch_to_scaled_voltage_dac(DAC_CHANNEL channel, int32_t pitch, int32_t octave_offset, uint8_t voltage_scaling) {
-    pitch += (octave_offset * 12) << 7;
+    const int interval_size = 12*(1+DAC_20Vpp) << 7;
+    const int max_pitch = OCTAVES * interval_size;
 
- 
+    pitch += (octave_offset * interval_size);
+
     switch (voltage_scaling) {
       case VOLTAGE_SCALING_1V_PER_OCT:    // 1V/oct
           // do nothing
@@ -181,17 +186,17 @@ public:
           break;
     }
 
-    pitch += (kOctaveZero * 12) << 7;
-   
-    CONSTRAIN(pitch, 0, (120 << 7));
+    pitch += (kOctaveZero * interval_size);
 
-    const int32_t octave = pitch / (12 << 7);
-    const int32_t fractional = pitch - octave * (12 << 7);
+    CONSTRAIN(pitch, 0, max_pitch);
+
+    const int32_t octave = pitch / interval_size;
+    const int32_t fractional = pitch - octave * interval_size;
 
     int32_t sample = calibration_data_->calibrated_octaves[channel][octave];
     if (fractional) {
       int32_t span = calibration_data_->calibrated_octaves[channel][octave + 1] - sample;
-      sample += (fractional * span) / (12 << 7);
+      sample += (fractional * span) / interval_size;
     }
 
     return sample;
@@ -220,7 +225,7 @@ public:
 
   // Set integer voltage value, where 0 = 0V, 1 = 1V
   static void set_octave(DAC_CHANNEL channel, int v) {
-    set(channel, calibration_data_->calibrated_octaves[channel][kOctaveZero + v]);
+    set(channel, get_octave_offset(channel, v));
   }
 
   // Set all channels to integer voltage value, where 0 = 0V, 1 = 1V
@@ -234,7 +239,14 @@ public:
   }
 
   static uint32_t get_octave_offset(DAC_CHANNEL channel, int octave) {
-    return calibration_data_->calibrated_octaves[channel][kOctaveZero + octave];
+    const int base_oct = kOctaveZero + octave/(1+DAC_20Vpp);
+    int cv = calibration_data_->calibrated_octaves[channel][base_oct];
+    if (DAC_20Vpp && (octave & 1)) {
+      // odd-numbered octaves are halfway between
+      const int neighbor = base_oct + (octave % 2);
+      cv = (cv + calibration_data_->calibrated_octaves[channel][neighbor]) / 2;
+    }
+    return cv;
   }
 
   static void Update() {

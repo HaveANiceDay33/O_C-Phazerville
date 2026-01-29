@@ -3,11 +3,11 @@
 HS::IOFrame HS::frame;
 HS::ClockManager HS::clock_m;
 
-int HemisphereApplet::cursor_countdown[APPLET_SLOTS + 1];
+int HemisphereApplet::cursor_countdown[APPLET_CURSOR_COUNT];
 int16_t HemisphereApplet::cursor_start_x;
 int16_t HemisphereApplet::cursor_start_y;
 const char* HemisphereApplet::help[HELP_LABEL_COUNT];
-HS::EncoderEditor HemisphereApplet::enc_edit[APPLET_SLOTS + 1];
+HS::EncoderEditor HemisphereApplet::enc_edit[APPLET_CURSOR_COUNT];
 
 void HemisphereApplet::BaseStart(const HEM_SIDE hemisphere_) {
     SetDisplaySide(hemisphere_);
@@ -90,7 +90,7 @@ void HS::IOFrame::Load() {
     gate_high[3] = OC::DigitalInputs::read_immediate<OC::DIGITAL_INPUT_4>();
     for (int i = 0; i < ADC_CHANNEL_COUNT; ++i) {
         // Set CV inputs
-        inputs[i] = OC::ADC::raw_pitch_value(ADC_CHANNEL(i));
+        inputs[i] = OC::ADC::pitch_value(ADC_CHANNEL(i));
 
         // calculate gates/clocks for all ADC inputs as well
         gate_high[OC::DIGITAL_INPUT_LAST + i] = inputs[i] > GATE_THRESHOLD;
@@ -104,7 +104,7 @@ void HS::IOFrame::Load() {
     // Handle clock pulse timing
     for (int i = 0; i < DAC_CHANNEL_COUNT; ++i) {
         if (clock_countdown[i] > 0) {
-            if (--clock_countdown[i] == 0) outputs[i] = 0;
+            if (--clock_countdown[i] == 0) Out(i, 0);
         }
     }
     for (int i = 0; i < MIDIMAP_MAX; ++i) {

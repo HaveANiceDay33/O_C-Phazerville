@@ -9,14 +9,19 @@
 #include "OC_menus.h"
 #include "OC_ui.h"
 #include "OC_strings.h"
+#include "OC_apps.h"
+#include "util/util_math.h"
 #include "util/util_misc.h"
 #include "extern/dspinst.h"
+#include <malloc.h>
 
 #ifdef ARDUINO_TEENSY41
 #include <Audio.h>
 
 extern "C" uint8_t external_psram_size;
+extern char _extram_start[], _extram_end[];
 #endif
+extern char _ebss[], _heap_end[], *__brkval, _estack;
 
 #ifdef POLYLFO_DEBUG  
 extern void POLYLFO_debug();
@@ -49,6 +54,7 @@ extern void ASR_debug();
 namespace OC {
 
 namespace DEBUG {
+  debug::AveragedCycles LOOP_cycles;
   debug::AveragedCycles ISR_cycles;
   debug::AveragedCycles UI_cycles;
   debug::AveragedCycles MENU_draw_cycles;
@@ -62,12 +68,47 @@ namespace DEBUG {
   }
 }; // namespace DEBUG
 
-static void debug_menu_core() {
+static void debug_menu_ram() {
+
+#ifdef __IMXRT1062__
+  auto sp = (char*) __builtin_frame_address(0);
+  auto stack = sp - _ebss;
+  int heap = OC::CORE::FreeRam(); // _heap_end - __brkval;
+#else
+  // T3.2
+  char tos;
+  int stack = &_estack - &tos;
+  int heap = mallinfo().uordblks;
+  int free = mallinfo().fordblks + (&tos - __brkval);
+
+  graphics.setPrintPos(2, 32);
+  graphics.printf("FREE  %7d (%dKB)", free, free >> 10);
+#endif
 
   graphics.setPrintPos(2, 12);
-  graphics.printf("%uMHz %luus+%luus", F_CPU / 1000 / 1000, OC_CORE_TIMER_RATE, OC_UI_TIMER_RATE);
-  
+  graphics.printf("STACK %7d (%dKB)", stack, stack >> 10);
+
   graphics.setPrintPos(2, 22);
+  graphics.printf("HEAP  %7d (%dKB)", heap, heap >> 10);
+
+#if ARDUINO_TEENSY41
+  char *derp = (char*)extmem_malloc(1);
+  //auto psram = _extram_start + (external_psram_size << 20) - _extram_end;
+  auto psram = _extram_start + (external_psram_size << 20) - derp;
+  if (external_psram_size == 0) psram = 0;
+  graphics.setPrintPos(2, 32);
+  graphics.printf("PSRAM %7d (%dKB)", psram, psram >> 10);
+  extmem_free(derp);
+#endif
+}
+
+static void debug_menu_core() {
+  int y = 12;
+  graphics.setPrintPos(2, y);
+  graphics.printf("%uMHz %luus+%luus", F_CPU / 1000 / 1000, OC_CORE_TIMER_RATE, OC_UI_TIMER_RATE);
+
+  y += 10;
+  graphics.setPrintPos(2, y);
   uint32_t isr_us = debug::cycles_to_us(DEBUG::ISR_cycles.value());
   graphics.printf("CORE%3lu/%3lu/%3lu %2lu%%",
                   debug::cycles_to_us(DEBUG::ISR_cycles.min_value()),
@@ -75,17 +116,25 @@ static void debug_menu_core() {
                   debug::cycles_to_us(DEBUG::ISR_cycles.max_value()),
                   (isr_us * 100) /  OC_CORE_TIMER_RATE);
 
-  graphics.setPrintPos(2, 32);
+  y += 10;
+  graphics.setPrintPos(2, y);
   graphics.printf("POLL%3lu/%3lu/%3lu",
                   debug::cycles_to_us(DEBUG::UI_cycles.min_value()),
                   debug::cycles_to_us(DEBUG::UI_cycles.value()),
                   debug::cycles_to_us(DEBUG::UI_cycles.max_value()));
 
 #ifdef OC_UI_DEBUG
-  graphics.setPrintPos(2, 42);
+  y += 10;
+  graphics.setPrintPos(2, y);
   graphics.printf("UI   !%lu #%lu", DEBUG::UI_queue_overflow, DEBUG::UI_event_count);
-  graphics.setPrintPos(2, 52);
 #endif
+
+  y += 10;
+  graphics.setPrintPos(2, y);
+  graphics.printf("LOOP%3lu/%3lu/%3lu",
+                  debug::cycles_to_us(DEBUG::LOOP_cycles.min_value()),
+                  debug::cycles_to_us(DEBUG::LOOP_cycles.value()),
+                  debug::cycles_to_us(DEBUG::LOOP_cycles.max_value()));
 }
 
 static void debug_menu_version()
@@ -101,9 +150,26 @@ static void debug_menu_version()
 #else
   graphics.print(" PROD");
 #endif
-#ifdef USB_SERIAL
+  if (DAC_20Vpp) graphics.print(", 20Vpp");
+
   graphics.setPrintPos(2, 42);
-  graphics.print("USB_SERIAL");
+  graphics.print("usb=");
+#if defined(USB_MIDI) || defined (USB_MIDI_AUDIO_SERIAL)
+  graphics.print("MIDI");
+#endif
+#if defined(USB_AUDIO) || defined (USB_MIDI_AUDIO_SERIAL)
+  graphics.print("+Audio");
+#endif
+#ifdef USB_MTPDISK
+  graphics.print("+MTP");
+#endif
+#ifdef USB_SERIAL
+  graphics.print("+Serial");
+#endif
+
+#ifdef __IMXRT1062__
+  graphics.setPrintPos(2, 52);
+  graphics.printf("HW_ID= 0.%03dV", int(GetIDVoltage() * 1000));
 #endif
 }
 
@@ -157,6 +223,32 @@ static void debug_menu_adc() {
 }
 
 #ifdef ARDUINO_TEENSY41
+static void debug_menu_adc_noise() {
+  static debug::AveragedCycles chan[ADC_CHANNEL_COUNT];
+  static elapsedMillis timeout;
+
+  const bool reset = timeout > 5000;
+  if (reset) timeout = 0;
+
+  for (int i = 0; i < 4; ++i) {
+    if (reset) {
+      chan[i].Reset();
+      chan[i+4].Reset();
+    }
+    chan[i].push(ADC::raw_value(ADC_CHANNEL(i)));
+    chan[i+4].push(ADC::raw_value(ADC_CHANNEL(i+4)));
+
+    uint32_t diff1 = chan[i].max_value() - chan[i].min_value();
+    uint32_t diff2 = chan[i+4].max_value() - chan[i+4].min_value();
+
+    graphics.setPrintPos(2, 12 + 10*i);
+    graphics.printf("C%d %5lu C%d %5lu", i+1, diff1, i+5, diff2);
+  }
+
+  graphics.setPrintPos(2, 52);
+  graphics.print("(5 sec reset)");
+}
+
 static void debug_menu_adc_value() {
   graphics.setPrintPos(2, 12);
   graphics.printf("C1 %5ld C5 %5ld", ADC::value(ADC_CHANNEL_1), ADC::value(ADC_CHANNEL_5));
@@ -181,15 +273,18 @@ static void debug_menu_adc_value() {
 }
 
 static void debug_menu_audio() {
-  float whole = AudioProcessorUsage();
-  int part = int(whole * 100) % 100;
+  static SmoothedValue<int, 64> smooth_cpu;
+  smooth_cpu.push(AudioProcessorUsage() * 100);
   graphics.setPrintPos(2, 12);
-  graphics.printf("Total CPU %2d.%02d%%", int(whole), part);
+  graphics.printf("Total CPU %2d.%02d%%", smooth_cpu.value()/100, smooth_cpu.value()%100);
 
-  whole = AudioProcessorUsageMax();
-  part = int(whole * 100) % 100;
+  float whole = AudioProcessorUsageMax();
+  int part = int(whole * 100) % 100;
   graphics.setPrintPos(2, 22);
   graphics.printf("Max CPU %2d.%02d%%", int(whole), part);
+
+  graphics.setPrintPos(2, 32);
+  graphics.printf("Rate: %lu Hz", uint32_t(AUDIO_SAMPLE_RATE));
 
   graphics.setPrintPos(2, 42);
   graphics.printf("PSRAM: %2u MB", external_psram_size);
@@ -211,37 +306,43 @@ struct DebugMenu {
 };
 
 static const DebugMenu debug_menus[] = {
-  { " CORE", debug_menu_core },
-  { " VERS", debug_menu_version },
-  { " GFX", debug_menu_gfx },
-  { " ADC (raw)", debug_menu_adc },
+  { "CORE", debug_menu_core },
+#ifdef __IMXRT1062__
+  { "RAM (free)", debug_menu_ram },
+#else
+  { "RAM", debug_menu_ram },
+#endif
+  { "VERS", debug_menu_version },
+  { "GFX", debug_menu_gfx },
+  { "ADC (raw)", debug_menu_adc },
 #ifdef ARDUINO_TEENSY41
-  { " ADC (value)", debug_menu_adc_value },
-  { " AUDIO", debug_menu_audio },
+  { "ADC (value)", debug_menu_adc_value },
+  { "ADC (noise)", debug_menu_adc_noise },
+  { "AUDIO", debug_menu_audio },
 #endif
 #ifdef POLYLFO_DEBUG  
-  { " POLYLFO", POLYLFO_debug },
+  { "POLYLFO", POLYLFO_debug },
 #endif // POLYLFO_DEBUG
 #ifdef ENVGEN_DEBUG  
-  { " ENVGEN", ENVGEN_debug },
+  { "ENVGEN", ENVGEN_debug },
 #endif // ENVGEN_DEBUG
 #ifdef BBGEN_DEBUG  
-  { " BBGEN", BBGEN_debug },
+  { "BBGEN", BBGEN_debug },
 #endif // BBGEN_DEBUG
 #ifdef BYTEBEATGEN_DEBUG  
-  { " BYTEBEATGEN", BYTEBEATGEN_debug },
+  { "BYTEBEATGEN", BYTEBEATGEN_debug },
 #endif // BYTEBEATGEN_DEBUG
 #ifdef H1200_DEBUG  
-  { " H1200", H1200_debug },
+  { "H1200", H1200_debug },
 #endif // H1200_DEBUG
 #ifdef QQ_DEBUG  
-  { " QQ", QQ_debug },
+  { "QQ", QQ_debug },
 #endif // QQ_DEBUG
 #ifdef ASR_DEBUG  
-  { " ASR", ASR_debug },
+  { "ASR", ASR_debug },
 #endif // ASR_DEBUG
 #ifdef PEWPEWPEW
-  { " ", debug_menu_pewpewpew },
+  { "PEW PEW PEW!", debug_menu_pewpewpew },
 #endif
 };
 
@@ -250,12 +351,20 @@ void Ui::DebugStats() {
 
   int current_menu_index = 0;
   bool exit_loop = false;
+  uint32_t loopcount = 0;
   while (!exit_loop) {
+    OC_DEBUG_PROFILE_SCOPE(OC::DEBUG::LOOP_cycles);
+    // Run current app
+    if (OC::CORE::app_loop_enabled)
+      OC::apps::current_app->loop();
+
+    OC::CORE::FlushTasks();
+
     const auto &current_menu = debug_menus[current_menu_index];
 
     GRAPHICS_BEGIN_FRAME(false);
       graphics.setPrintPos(2, 2);
-      graphics.printf("%d/%u", current_menu_index + 1, ARRAY_SIZE(debug_menus));
+      graphics.printf("%d/%u ", current_menu_index + 1, ARRAY_SIZE(debug_menus));
       graphics.print(current_menu.title);
       current_menu.display_fn();
     GRAPHICS_END_FRAME();
@@ -272,6 +381,10 @@ void Ui::DebugStats() {
       }
     }
     CONSTRAIN(current_menu_index, 0, (int)ARRAY_SIZE(debug_menus) - 1);
+
+    ++loopcount;
+    OC_DEBUG_RESET_CYCLES(loopcount, 0x1000000, OC::DEBUG::LOOP_cycles);
+    //delay(1);
   }
 
   event_queue_.Flush();

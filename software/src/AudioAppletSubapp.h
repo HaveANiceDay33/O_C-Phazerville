@@ -7,8 +7,12 @@
 #include "PhzConfig.h"
 #include "UI/ui_events.h"
 #include "util/util_tuples.h"
-#include <Audio.h>
-#include <cstdint>
+#include "dsputils_arm.h"
+#include "Audio/AudioMixer.h"
+#include "Audio/AudioPassthrough.h"
+#include "Audio/AudioVCA.h"
+#include "Audio/InterpolatingStream.h"
+
 
 #define ForEachSide(ch) for (HEM_SIDE ch : {LEFT_HEMISPHERE, RIGHT_HEMISPHERE})
 
@@ -108,10 +112,9 @@ public:
     }
 
     ForEachSide(side) {
-      HEM_SIDE s = static_cast<HEM_SIDE>(side);
       if (state[side] == EDIT_APPLET) {
-        HemisphereApplet& applet = get_selected_applet(s);
-        applet.SetDisplaySide(s);
+        HemisphereApplet& applet = get_selected_applet(side);
+        applet.SetDisplaySide(static_cast<HEM_SIDE>(side + AUDIO_SLOT_L));
         applet.BaseView();
       } else {
         int y = cursor[side] * 10 + 14;
@@ -124,7 +127,7 @@ public:
           gfxIcon(120 * side, y + 1, side ? LEFT_ICON : RIGHT_ICON);
         }
         for (uint_fast8_t slot = 0; slot < Slots + 1; slot++) {
-          draw_peak(s, slot);
+          draw_peak(side, slot);
         }
 
         gfxPos(1 + 64 * side, 2);
@@ -180,11 +183,13 @@ public:
     if (IsStereo(c)) {
       get_selected_stereo_applet(c).BaseStart(LEFT_HEMISPHERE);
       ForEachSide(side) {
+        get_selected_mono_applet(side, c).Disconnect();
         get_selected_mono_applet(side, c).Unload();
         ConnectStereoToNext(side, c);
         if (c > 0) ConnectSlotToNext(side, c - 1);
       }
     } else {
+      get_selected_stereo_applet(c).Disconnect();
       get_selected_stereo_applet(c).Unload();
       ForEachSide(side) {
         get_selected_mono_applet(side, c).BaseStart(side);
@@ -237,6 +242,7 @@ public:
   void ChangeStereoApplet(HEM_SIDE side, size_t slot, int ix) {
     int& sel = selected_stereo_applets[slot];
     if (ix == sel) return;
+    get_selected_stereo_applet(slot).Disconnect();
     get_selected_stereo_applet(slot).Unload();
     sel = ix;
     auto& app = get_selected_stereo_applet(slot);
@@ -250,6 +256,7 @@ public:
   void ChangeMonoApplet(HEM_SIDE side, size_t slot, int ix) {
     int& sel = selected_mono_applets[side][slot];
     if (ix == sel) return;
+    get_selected_mono_applet(side, slot).Disconnect();
     get_selected_mono_applet(side, slot).Unload();
     sel = ix;
     auto& app = get_selected_mono_applet(side, slot);

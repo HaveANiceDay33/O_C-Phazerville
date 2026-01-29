@@ -28,6 +28,8 @@
 
 #include "OC_core.h"
 #include "HSMIDI.h"
+#include <functional>
+#include <vector>
 
 namespace HS {
 
@@ -79,7 +81,7 @@ public:
 
     bool boop[8] = {0,0,0,0,0,0,0,0}; // Manual triggers
 
-    void (*sync_func)(); // callback function
+    std::queue<Task> syncfn_queue;
 
     ClockManager() {
         SetTempoBPM(120);
@@ -133,22 +135,24 @@ public:
     float GetTempoFloat() {
       return 1000000.0f / ticks_per_beat;
     }
+    uint32_t GetTempoTicks() {return ticks_per_beat;}
     uint32_t GetCycleTicks(int ch = 0) {
       if (tocks_per_beat[ch] > 0) return ticks_per_beat / tocks_per_beat[ch];
       if (tocks_per_beat[ch] < 0) return ticks_per_beat * (1 - tocks_per_beat[ch]);
       return 0;
     }
 
-    void BeatSync(void (*func)()) {
-      sync_func = func;
+    void BeatSync(std::function<void()> func) {
+      // TODO: prevent duplicates...
+      syncfn_queue.emplace(func);
     }
     void ProcessBeatSync() {
+      if (syncfn_queue.empty()) return;
       // Things that should only happen on the downbeat
       // such as: preset load, multiplier change, etc...
-      // TODO: form a queue
-      if (sync_func != nullptr) {
-        sync_func();
-        sync_func = nullptr;
+      while (!syncfn_queue.empty()) {
+        syncfn_queue.front()();
+        syncfn_queue.pop();
       }
     }
 
@@ -177,7 +181,11 @@ public:
     // call this on every tick when clock is running, before all Controllers
     void SyncTrig(bool clocked, bool midi_sync = false) {
         const uint32_t now = OC::CORE::ticks;
+        if (midi_sync) DisableMIDIOut();
         const int ppqn = (midi_sync || !midi_out_enabled) ? MIDI_CLOCK_PPQN : clock_ppqn;
+
+        // don't sync to non-MIDI triggers if MIDI sync is active
+        if (!midi_sync && !midi_out_enabled) clocked = false;
 
         // Reset only when all multipliers have been met
         bool reset = 1;
@@ -196,7 +204,10 @@ public:
                     next_tock_tick += shuffle * ticks_per_beat / 100 / static_cast<uint32_t>(tocks_per_beat[ch]);
 
                 tock[ch] = now >= next_tock_tick;
-                if (tock[ch]) ++count[ch]; // increment multiplier counter
+                if (tock[ch]) {
+                  ++count[ch]; // increment multiplier counter
+                  if (1 == count[ch]) beatsync = 1;
+                }
 
                 beatsync = beatsync || (count[ch] > tocks_per_beat[ch]); // multiplier has been exceeded
                 reset = reset && (count[ch] > tocks_per_beat[ch]);
@@ -219,7 +230,8 @@ public:
 
         }
         if (reset) Reset(1); // skip the one we're already on
-        if (beatsync) ProcessBeatSync();
+        if (beatsync && !syncfn_queue.empty())
+          ProcessBeatSync();
 
         // handle syncing to physical clocks
         if (clocked && clock_tick[tickno] && ppqn) {
@@ -296,6 +308,7 @@ public:
 #endif
 #endif
         }
+        EnableMIDIOut();
     }
 
     void Pause() {paused = 1;}

@@ -88,7 +88,7 @@ public:
 
         // Ball properties
         ball_x = 64;
-        ball_y = random(BOUNDARY_TOP + 2, (BOUNDARY_BOTTOM - 2)*2); // Start off in a random spot
+        ball_y = random((BOUNDARY_TOP + 2)*2, (BOUNDARY_BOTTOM - 2)*2); // Start off in a random spot
         dir_x = 1;
         dir_y = random(0, 100) > 50 ? 1 : -1; // Start off in a random direction
 

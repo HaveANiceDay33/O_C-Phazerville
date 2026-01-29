@@ -107,6 +107,7 @@ public:
           case DAC_A_VOLT_HIGH:
             if (calstate.used_defaults) {
               // copy DAC A to the rest of them, to make life easier
+              // WARNING: this doesn't work in flipped mode!
               for (int ch = 1; ch < DAC_CHANNEL_LAST; ++ch) {
                 for (int i = 0; i < OCTAVES; ++i) {
                   OC::calibration_data.dac.calibrated_octaves[ch][i] = OC::calibration_data.dac.calibrated_octaves[0][i];
@@ -225,7 +226,7 @@ public:
         case CALIBRATE_OCTAVE:
           OC::calibration_data.dac.calibrated_octaves[step_to_channel(step->step)][current_octave] =
             calstate.encoder_value;
-          DAC::set_all_octave(current_octave - DAC::kOctaveZero);
+          DAC::set_all_octave((current_octave - DAC::kOctaveZero)*(1+DAC_20Vpp));
           break;
         #ifdef VOR
         case CALIBRATE_VBIAS_BIPOLAR:
@@ -332,7 +333,7 @@ public:
           graphics.drawBitmap8(menu::kDisplayWidth - 10, y + 13, 8, CHECK_ICON);
           gfxPos(menu::kIndentDx, y + 2);
         }
-        int voltage = (current_octave - DAC::kOctaveZero) * (NorthernLightModular? 12: 10);
+        int voltage = (current_octave - DAC::kOctaveZero) * (NorthernLightModular? 12: 10) * (1+DAC_20Vpp);
         graphics.printf("-> %d.%d00V", voltage / 10, voltage % 10);
         gfxPos(kValueX, y + 2);
         graphics.print((int)calstate.encoder_value, 5);
@@ -487,10 +488,17 @@ public:
               SwitchToStep(event.value);
             }
             break;
-          case CONTROL_ENCODER_R:
-            calstate.encoder_value = constrain(calstate.encoder_value + event.value,
-                calstate.current_step->min, calstate.current_step->max);
+          case CONTROL_ENCODER_R: {
+            int delta = event.value;
+            if (event.mask & OC::CONTROL_BUTTON_X) delta *= 16;
+            else if (event.mask & OC::CONTROL_BUTTON_Y) delta *= 32;
+            calstate.encoder_value = constrain(
+              calstate.encoder_value + delta,
+              calstate.current_step->min,
+              calstate.current_step->max
+            );
             break;
+          }
 
           case CONTROL_BUTTON_UP:
           case CONTROL_BUTTON_DOWN:

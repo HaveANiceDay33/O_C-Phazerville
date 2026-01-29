@@ -12,10 +12,6 @@
  *
  */
 
-#include "Audio/AudioPassthrough.h"
-#include "CVInputMap.h"
-#include "HemisphereAudioApplet.h"
-#include "OC_gpio.h"
 #include <TeensyVariablePlayback.h>
 
 template <AudioChannels Channels>
@@ -30,10 +26,19 @@ public:
 
   void Start() {
     for (int i = 0; i < Channels; i++) {
-      in_conns[i].connect(input, i, mixer[i], 3);
+      PatchCable(input, i, mixer[i], 3);
       mixer[i].gain(3, 1.0);
-      out_conns[i].connect(mixer[i], 0, output, i);
+      PatchCable(mixer[i], 0, output, i);
     }
+
+    PatchCable(wavplayer, 0, hpfilter[0], 0);
+    PatchCable(wavplayer, 1, hpfilter[1], 0);
+    PatchCable(wavplayer, 0, mixer[0], 0);
+    PatchCable(wavplayer, 1, mixer[1], 0);
+    PatchCable(hpfilter[0], 2, mixer[0], 1);
+    PatchCable(hpfilter[1], 2, mixer[1], 1);
+    PatchCable(hpfilter[0], 0, mixer[0], 2);
+    PatchCable(hpfilter[1], 0, mixer[1], 2);
 
     hpfilter[0].resonance(1.0);
     hpfilter[1].resonance(1.0);
@@ -50,6 +55,11 @@ public:
   }
   void Unload() {
     wavplayer.stop();
+    AllowRestart();
+  }
+
+  void Reset() override {
+    playstop_cv.Reset();
   }
 
   void Controller() {
@@ -274,16 +284,18 @@ public:
   void OnDataRequest(std::array<uint64_t, CONFIG_SIZE>& data) override {
     // STOP playback to avoid SD card hangup on preset save
     wavplayer.stop();
-    data[0] = PackPackables(level, level_cv, int8_t(playrate), playrate_cv, wavplayer_select, djfilter);
+    uint8_t filenum = (uint8_t)wavplayer_select;
+    data[0] = PackPackables(level, level_cv, int8_t(playrate), playrate_cv, filenum, djfilter);
     data[1] = PackPackables(playrate, djfilter_cv, playstop_cv, loop_length);
   }
   void OnDataReceive(const std::array<uint64_t, CONFIG_SIZE>& data) override {
     int8_t old_playrate;
-    UnpackPackables(data[0], level, level_cv, old_playrate, playrate_cv, wavplayer_select, djfilter);
+    uint8_t filenum;
+    UnpackPackables(data[0], level, level_cv, old_playrate, playrate_cv, filenum, djfilter);
     UnpackPackables(data[1], playrate, djfilter_cv, playstop_cv, loop_length);
     if (playrate == 0) playrate = old_playrate;
     if (loop_length == 0) loop_length = 8;
-    ChangeToFile(wavplayer_select);
+    ChangeToFile(filenum);
   }
 
   AudioStream* InputStream() override {
@@ -335,27 +347,15 @@ private:
 
   AudioPassthrough<Channels> input;
   AudioPlaySdResmp      wavplayer;
-  AudioFilterStateVariable hpfilter[2];
+  AudioFilterStateVariable2 hpfilter[2];
   AudioMixer4           mixer[2];
   AudioPassthrough<Channels> output;
-
-  std::array<AudioConnection, Channels> in_conns;
-  std::array<AudioConnection, Channels> out_conns;
-
-  AudioConnection          patchCordWav1L{wavplayer, 0, hpfilter[0], 0};
-  AudioConnection          patchCordWav1R{wavplayer, 1, hpfilter[1], 0};
-  AudioConnection          patchCordWav1Ldry{wavplayer, 0, mixer[0], 0};
-  AudioConnection          patchCordWav1Rdry{wavplayer, 1, mixer[1], 0};
-  AudioConnection          patchCordWavHPF1L{hpfilter[0], 2, mixer[0], 1};
-  AudioConnection          patchCordWavHPF1R{hpfilter[1], 2, mixer[1], 1};
-  AudioConnection          patchCordWavLPF2L{hpfilter[0], 0, mixer[0], 2};
-  AudioConnection          patchCordWavLPF2R{hpfilter[1], 0, mixer[1], 2};
 
   // SD player vars, copied from other dev branch
   bool wavplayer_reload = true;
   bool wavplayer_playtrig = false;
   bool wavplayer_ready = false;
-  uint8_t wavplayer_select = 1;
+  uint16_t wavplayer_select = 1;
   uint8_t loop_length = 8;
   int8_t loop_count = 0;
   bool loop_on = false;
@@ -364,7 +364,8 @@ private:
   // SD file player functions
   void FileLoad() {
     char filename[] = "000.WAV";
-    filename[1] += wavplayer_select / 10;
+    filename[0] += wavplayer_select / 100;
+    filename[1] += wavplayer_select / 10 % 10;
     filename[2] += wavplayer_select % 10;
     wavplayer_ready = wavplayer.playWav(filename);
   }
@@ -423,7 +424,7 @@ private:
   }
 
   void ChangeToFile(int select) {
-    wavplayer_select = (uint8_t)constrain(select, 0, 99);
+    wavplayer_select = (uint16_t)constrain(select, 0, 999);
     wavplayer_reload = true;
     if (wavplayer.isPlaying()) {
       StartPlaying();

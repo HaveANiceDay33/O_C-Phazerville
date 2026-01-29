@@ -1,4 +1,6 @@
 #include "HSClockManager.h"
+#include "HSMIDI.h"
+#include "HSUtils.h"
 #include "HSIOFrame.h"
 
 // arguments are raw data from MIDI system, so channel starts at 1 (not 0)
@@ -339,4 +341,3 @@ void HS::MIDIFrame::Send(const int *outvals) {
     // I think this can cause the UI to lag and miss input
     //usbMIDI.send_now();
 }
-

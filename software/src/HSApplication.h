@@ -117,7 +117,7 @@ public:
         {
             if (notenames) {
                 // approximate notes being output
-                gfxPrint(2 + w*ch, 55, midi_note_numbers[MIDIQuantizer::NoteNumber(HS::frame.outputs[ch])] );
+                gfxPrint(2 + w*ch, 55, midi_note_numbers[MIDIQuantizer::NoteNumber(HS::frame.ViewOut(ch))] );
             }
 
             // trigger/gate indicators
@@ -131,7 +131,7 @@ public:
             gfxFrame(2 + (w * ch), y, w_, abs(height));
 
             // output
-            height = ProportionCV(HS::frame.outputs[ch], h);
+            height = ProportionCV(HS::frame.ViewOut(ch), h);
             y = constrain(h - height, 0, h);
             gfxInvert(3 + w_ + (w * ch), y, w_, abs(height));
 
@@ -193,8 +193,8 @@ public:
     }
 
     // Buffered I/O functions for use in Views
-    int ViewIn(int ch) {return frame.inputs[ch];}
-    int ViewOut(int ch) {return frame.outputs[ch];}
+    int ViewIn(int ch) const {return frame.inputs[ch];}
+    int ViewOut(int ch) const {return frame.ViewOut(ch);}
     uint32_t ClockCycleTicks(int ch) {return frame.cycle_ticks[ch];}
 
     /* ADC Lag: There is a small delay between when a digital input can be read and when an ADC can be
@@ -263,9 +263,7 @@ public:
             break;
           }
           case DIGITAL_INPUT_MAP: {
-            int8_t& div
-              = std::get<DigitalInputMap*>(selected_input_map)->division;
-            div = constrain(div + direction, -64, 64);
+            std::get<DigitalInputMap*>(selected_input_map)->div_mult.Adjust(direction);
             break;
           }
           default:
@@ -281,16 +279,19 @@ public:
         graphics.clearRect(x_off, 0, 63, 11);
         switch (selected_input_map.index()) {
           case CV_INPUT_MAP: {
-            gfxPos(32 - 7 * 6 / 2, 2);
             int tenths = std::get<CVInputMap*>(selected_input_map)->Atten();
-            graphics.printf("%4d.%d%%", tenths / 10, abs(tenths) % 10);
+            gfxPos(32 - 7 * 6 / 2 + pad(10000, tenths) - 6*(abs(tenths)<10), 2);
+            if (tenths < 0) gfxPrint("-");
+            graphics.printf("%d.%d%%", abs(tenths) / 10, abs(tenths) % 10);
             break;
           }
           case DIGITAL_INPUT_MAP: {
             gfxPos(32 - 4 * 6 / 2, 2);
-            int8_t div = std::get<DigitalInputMap*>(selected_input_map)->division;
-            if (div < 0) graphics.printf("/%3d", -div + 1);
-            else graphics.printf("X%3d", div + 1);
+            DigitalInputMap* map = std::get<DigitalInputMap*>(selected_input_map);
+            int8_t div = map->div_mult.steps;
+            if (map->source < 0) graphics.print(1 + 3*(2 + map->source)); // "1" or "4"
+            if (div > 0) graphics.printf("/%2d", div);
+            else graphics.printf("x%2d", -div);
             break;
           }
           default:
