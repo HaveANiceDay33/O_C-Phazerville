@@ -43,6 +43,10 @@ public:
         BOOP2,
         BOOP3,
         BOOP4,
+        INSKIP1,
+        INSKIP2,
+        INSKIP3,
+        INSKIP4,
         OUTSKIP1,
         OUTSKIP2,
         OUTSKIP3,
@@ -185,11 +189,18 @@ public:
             HS::trigmap[cursor-TRIG1].ChangeSource(direction);
             break;
 
+        case INSKIP1:
+        case INSKIP2:
+        case INSKIP3:
+        case INSKIP4:
+            HS::frame.NudgeInSkip(cursor-INSKIP1, direction);
+            break;
+
         case OUTSKIP1:
         case OUTSKIP2:
         case OUTSKIP3:
         case OUTSKIP4:
-            HS::frame.NudgeSkip(cursor-OUTSKIP1, direction);
+            HS::frame.NudgeOutSkip(cursor-OUTSKIP1, direction);
             break;
 
         case BOOP1:
@@ -244,6 +255,18 @@ public:
 
         Pack(data, PackLocation { 45, 4 }, HS::screensaver_mode);
 
+        Pack(data, PackLocation { 49, 1 }, HS::auto_save_enabled);
+        Pack(data, PackLocation { 50, 1 }, HS::cursor_wrap);
+        Pack(data, PackLocation { 51, 7 }, HS::trig_length);
+
+#ifdef VOR
+        // remember Vbias per preset
+        VBiasManager *v = v->get();
+        Pack(data, PackLocation { 58, 2 }, v->GetState());
+#endif
+
+        Pack(data, PackLocation{60, 1}, (clock_m.IsRunning() || clock_m.IsPaused()));
+        // 3 bits free
         return data;
     }
 
@@ -257,39 +280,36 @@ public:
         clock_m.SetClockPPQN(Unpack(data, PackLocation { 40, 5 }));
 
         HS::screensaver_mode = Unpack(data, PackLocation { 45, 4 });
-    }
 
-    uint64_t GetGlobals() {
-        uint64_t data = 0;
-        // only the first 16 bits are actually stored on T3.2
-        Pack(data, PackLocation { 0, 1 }, HS::auto_save_enabled);
-        Pack(data, PackLocation { 1, 1 }, HS::cursor_wrap);
-        //Pack(data, PackLocation { 2, 2 }, HS::screensaver_mode);
-        Pack(data, PackLocation { 4, 7 }, HS::trig_length);
-
-#ifdef VOR
-        // remember Vbias per preset
-        VBiasManager *v = v->get();
-        Pack(data, PackLocation { 11, 2 }, v->GetState());
-#endif
-
-        Pack(data, PackLocation{13, 1}, (clock_m.IsRunning() || clock_m.IsPaused()));
-        return data;
-    }
-    void SetGlobals(const uint64_t &data) {
-        HS::auto_save_enabled = Unpack(data, PackLocation { 0, 1 });
-        HS::cursor_wrap = Unpack(data, PackLocation { 1, 1 });
-        //HS::screensaver_mode = Unpack(data, PackLocation { 2, 2 });
-        HS::trig_length = constrain( Unpack(data, PackLocation { 4, 7 }), 1, 127);
+        HS::auto_save_enabled = Unpack(data, PackLocation { 49, 1 });
+        HS::cursor_wrap = Unpack(data, PackLocation { 50, 1 });
+        HS::trig_length = constrain( Unpack(data, PackLocation { 51, 7 }), 1, 127);
 
 #ifdef VOR
         VBiasManager *v = v->get();
-        VBiasManager::VState bias_state = (VBiasManager::VState)Unpack(data, PackLocation { 11, 2 });
+        VBiasManager::VState bias_state = (VBiasManager::VState)Unpack(data, PackLocation { 58, 2 });
         v->SetState( bias_state );
 #endif
 
-        if (Unpack(data, PackLocation{13, 1}) && !clock_m.IsRunning())
+        if (Unpack(data, PackLocation{60, 1}) && !clock_m.IsRunning())
           clock_m.Start(true);
+    }
+
+    uint64_t GetGlobals() {
+      uint64_t data = 0;
+      for (size_t i = 0; i < 4; ++i) {
+        Pack(data, PackLocation{0 + i*7, 7}, HS::frame.clockinskip[i]);
+        Pack(data, PackLocation{28 + i*7, 7}, HS::frame.clockoutskip[i]);
+      }
+      // 8 bits free
+      return data;
+    }
+    void SetGlobals(const uint64_t &data) {
+      for (size_t i = 0; i < 4; ++i) {
+        // todo: validate?
+        HS::frame.clockinskip[i] = Unpack(data, PackLocation{0 + i*7, 7});
+        HS::frame.clockoutskip[i] = Unpack(data, PackLocation{28 + i*7, 7});
+      }
     }
 
 
@@ -322,8 +342,9 @@ private:
     // Space must be cleared first, depending on the cursor position.
     void DrawInterface() {
       if (slide_anim) {
+        const int h_norm = (cursor < TRIG1) ? 23 : 33;
         if (cursor < OUTSKIP1) {
-          const int height = 23 - (slide_anim * 23 / SLIDEOUT_TIME);
+          const int height = h_norm - (slide_anim * h_norm / SLIDEOUT_TIME);
           graphics.clearRect(0, 0, 128, height+1);
           gfxDottedLine(0, height, 127, height);
           gfxLine(0, height+1, 127, height+1);
@@ -338,11 +359,16 @@ private:
         return;
       }
 
-      if (cursor < OUTSKIP1) {
+      if (cursor < TRIG1) {
         graphics.clearRect(0, 0, 128, 24);
 
         gfxDottedLine(0, 21, 127, 21);
         gfxLine(0, 22, 127, 22);
+      } else if (cursor < OUTSKIP1) {
+        graphics.clearRect(0, 0, 128, 34);
+
+        gfxDottedLine(0, 31, 127, 31);
+        gfxLine(0, 32, 127, 32);
       } else {
         // lower section
         graphics.clearRect(0, 51, 128, 13);
@@ -350,7 +376,7 @@ private:
 
         gfxLine(0, 41, 49, 41);
         gfxLine(49, 41, 49, 51);
-        gfxPrint(0, 43, "TrigSkip");
+        gfxPrint(0, 43, "Out Skip");
         gfxLine(0, 52, 127, 52);
         gfxDottedLine(0, 53, 127, 53);
       }
@@ -392,21 +418,24 @@ private:
                 gfxPrint( (mult >= 0) ? mult : 1 - mult );
             }
         }
-      } else if (cursor <= BOOP4) {
+      } else if (cursor < OUTSKIP1) {
         int y = 1;
         for (int ch=0; ch<4; ++ch) {
             const int x = ch * 32;
             // Physical trigger input mappings
             gfxPrint(1 + x, y, HS::trigmap[ch].InputName() );
             // Manual trigger buttons
-            gfxIcon(4 + x, y + 10, (button_ticker && ch == cursor-BOOP1)?BTN_ON_ICON:BTN_OFF_ICON);
+            gfxIcon(4 + x, y + 9, (button_ticker && ch == cursor-BOOP1)?BTN_ON_ICON:BTN_OFF_ICON);
+            // Input trigger skipping
+            gfxPrint(1 + x + pad(100, HS::frame.clockinskip[ch]), y + 19, HS::frame.clockinskip[ch]);
+            gfxPrint("%");
         }
       } else {
         int y = 55;
         // output trig-skip
         for (int ch=0; ch<4; ++ch) {
             const int x = ch * 32;
-            gfxPrint(1 + x + pad(100, HS::frame.clockskip[ch]), y, HS::frame.clockskip[ch]);
+            gfxPrint(1 + x + pad(100, HS::frame.clockoutskip[ch]), y, HS::frame.clockoutskip[ch]);
             gfxPrint("%");
         }
       }
@@ -437,6 +466,12 @@ private:
         case TRIG3:
         case TRIG4:
             gfxCursor(1 + 32*(cursor-TRIG1), 9, 19);
+            break;
+        case INSKIP1:
+        case INSKIP2:
+        case INSKIP3:
+        case INSKIP4:
+            gfxCursor(1 + 32*(cursor-INSKIP1), 28, 19);
             break;
 
         case BOOP1:

@@ -9,13 +9,6 @@
 // misc. utility functions extracted from Hemisphere
 // -NJM
 
-// Simulated fixed floats by multiplying and dividing by powers of 2
-#ifndef int2simfloat
-#define int2simfloat(x) (x << 14)
-#define simfloat2int(x) (x >> 14)
-using simfloat = int32_t;
-#endif
-
 // Reference Constants
 #define ONE_OCTAVE (12 << 7)
 #define PULSE_VOLTAGE HS::octave_max
@@ -121,6 +114,7 @@ namespace HS {
     SCREEN_ZAPS,
     SCREEN_STARS,
     SCREEN_ZIPS,
+    SCREEN_BEATS,
 
     SCREENSAVER_MODE_COUNT
   };
@@ -223,6 +217,7 @@ namespace HS {
   extern OC::menu::ScreenCursor<5> showhide_cursor;
 
   void Init();
+  void ResetMappings();
   void DrawAppletList(bool blink = false);
 
   // --- Quantizer helpers
@@ -244,6 +239,7 @@ namespace HS {
   void DrawPopup(const int config_cursor = 0, const int preset_id = 0, const bool blink = 0);
   void ToggleClockRun();
   void PokePopup(PopupType pop, ErrMsgIndex err = NO_ERROR);
+  void PokePopup(PopupType pop, const char* msg);
 
 } // namespace HS
 
@@ -305,29 +301,6 @@ static constexpr uint8_t pad(int range, int number) {
     return padding;
 }
 
-
-//////////////// Calculation methods
-////////////////////////////////////////////////////////////////////////////////
-
-/* Proportion method using simfloat, useful for calculating scaled values given
- * a fractional value.
- *
- * Solves this:  numerator        ???
- *              ----------- = -----------
- *              denominator       max
- *
- * For example, to convert a parameter with a range of 1 to 100 into value scaled
- * to HEMISPHERE_MAX_CV, to be sent to the DAC:
- *
- * Out(ch, Proportion(value, 100, HEMISPHERE_MAX_CV));
- *
- */
-constexpr int Proportion(const int numerator, const int denominator, const int max_value) {
-    simfloat proportion = int2simfloat((int32_t)abs(numerator)) / (int32_t)denominator;
-    int scaled = simfloat2int(proportion * max_value);
-    return numerator >= 0 ? scaled : -scaled;
-}
-
 /* Proportion CV values into pixels for display purposes.
  *
  * Solves this:     cv_value           ???
@@ -335,3 +308,6 @@ constexpr int Proportion(const int numerator, const int denominator, const int m
  *              HEMISPHERE_MAX_CV   max_pixels
  */
 const int ProportionCV(const int cv_value, const int max_pixels, const int max_cv = HEMISPHERE_MAX_CV);
+
+void ZapScreensaver(const uint8_t stars = 0);
+void BeatCounterScreensaver();

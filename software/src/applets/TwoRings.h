@@ -43,6 +43,8 @@ public:
         PROB,
         QUANT_A,
         QUANT_B,
+        HOLD_PITCH_A,
+        HOLD_PITCH_B,
         RANGE,
         SLEW,
         CVMODE1,
@@ -192,21 +194,29 @@ public:
         };
 
         ForEachChannel(ch) {
+            const bool hold_pitch = ch ? hold_pitch_b : hold_pitch_a;
             switch (outmode[ch]) {
             case PITCH_BLEND: {
               // this is the unique case where input CV crossfades between the two melodies
               int x = constrain(note_trans[2], -range_mod, range_mod);
               int y = range_mod;
               int n = (note[0] * (y + x) + note[1] * (y - x)) / (2*y);
-              slew(Output[ch], HS::QuantizerLookup(qselect_mod[ch], n));
+              if (!hold_pitch || (reg[0] & 0x01) || (reg[1] & 0x01))
+                slew(Output[ch], HS::QuantizerLookup(qselect_mod[ch], n));
               break;
             }
-            case PITCH1:
-              slew(Output[ch], HS::QuantizerLookup(qselect_mod[ch], note[0] + note_trans[0]));
+            case PITCH1: {
+              const bool hit = (reg[1] & 0x01);
+              if (!hold_pitch || hit)
+                slew(Output[ch], HS::QuantizerLookup(qselect_mod[ch], note[0] + note_trans[0]));
               break;
-            case PITCH2:
-              slew(Output[ch], HS::QuantizerLookup(qselect_mod[ch], note[1] + note_trans[1]));
+            }
+            case PITCH2: {
+              const bool hit = (reg[0] & 0x01);
+              if (!hold_pitch || hit)
+                slew(Output[ch], HS::QuantizerLookup(qselect_mod[ch], note[1] + note_trans[1]));
               break;
+            }
             case MOD1: // 8-bit bi-polar proportioned CV
             case MOD2: {
               const int rnum = outmode[ch] - MOD1;
@@ -219,16 +229,18 @@ public:
             case TRIGPITCH1:
             case TRIGPITCH2: {
               const int rnum = outmode[ch] - TRIGPITCH1;
-              if (clk && (reg[outmode[ch]-TRIGPITCH1] & 0x01) == 1) // trigger if 1st bit is high
+              const bool hit = (reg[1-rnum] & 0x01);
+              if (clk && hit) // trigger if 1st bit is high
               {
                 Output[ch] = HEMISPHERE_MAX_CV;
                 trigpulse[ch] = HEMISPHERE_CLOCK_TICKS * trig_length;
+                trigpitch_note[ch] = note[rnum];
               }
               else // decay to pitch
               {
                 // hold until it's time to pull it down
                 if (--trigpulse[ch] < 0)
-                  slew(Output[ch], HS::QuantizerLookup(qselect_mod[ch], note[rnum] + note_trans[rnum]));
+                  slew(Output[ch], HS::QuantizerLookup(qselect_mod[ch], (hold_pitch ? trigpitch_note[ch] : note[rnum]) + note_trans[rnum]));
               }
               break;
             }
@@ -267,8 +279,19 @@ public:
         DrawSelector();
     }
 
-    // void DrawFullScreen() { }
-    // void OnButtonPress() { }
+    void DrawFullScreen() {
+        DrawSequence();
+    }
+
+    void OnButtonPress() {
+      if (cursor == HOLD_PITCH_A) {
+        hold_pitch_a ^= 1;
+      } else if (cursor == HOLD_PITCH_B) {
+        hold_pitch_b ^= 1;
+      } else {
+        CursorToggle();
+      }
+    }
 
     void AuxButton() {
       switch (cursor) {
@@ -296,6 +319,7 @@ public:
     void OnEncoderMove(int direction) {
         if (!EditMode()) {
             MoveCursor(cursor, direction, LAST_SETTING);
+            SetAux(cursor == PROB || cursor == LENGTH || cursor == QUANT_A || cursor == QUANT_B);
             return;
         }
 
@@ -350,6 +374,8 @@ public:
         Pack(data, PackLocation {52,4}, qselect[1]);
 
         Pack(data, PackLocation {56,1}, rotate_right);
+        Pack(data, PackLocation {57,1}, hold_pitch_a);
+        Pack(data, PackLocation {58,1}, hold_pitch_b);
 
         // TODO: utilize enigma's global turing machine storage for the registers
 
@@ -374,6 +400,8 @@ public:
         CONSTRAIN(qselect[1], 0, DAC_CHANNEL_LAST - 1);
 
         rotate_right = Unpack(data, PackLocation {56,1});
+        hold_pitch_a = Unpack(data, PackLocation {57,1});
+        hold_pitch_b = Unpack(data, PackLocation {58,1});
     }
 
 protected:
@@ -400,10 +428,13 @@ private:
     uint32_t reg_snap[2]; // for resetting
     bool reset_active = false;
     bool rotate_right = false;
+    bool hold_pitch_a = true;
+    bool hold_pitch_b = true;
 
     // most recent output values
     int Output[2] = {0, 0};
     int trigpulse[2] = {0, 0}; // tick timer for Trig output modes
+    int trigpitch_note[2] = {0, 0}; // note at last hit
 
     // Settings and modulated copies
     int qselect[2];
@@ -551,7 +582,9 @@ private:
         case SLEW:
             gfxBitmap(1, 25, 8, SCALE_ICON);
             gfxPrint(12, 25, "Q"); gfxPrint(qselect_mod[0] + 1);
+            if (hold_pitch_a) gfxPrint(26, 25, "H");
             gfxPrint(39, 25, "Q"); gfxPrint(qselect_mod[1] + 1);
+            if (hold_pitch_b) gfxPrint(53, 25, "H");
 
             gfxBitmap(1, 35, 8, UP_DOWN_ICON);
             gfxPrint(10, 35, range_mod);
@@ -579,7 +612,7 @@ private:
             case QUANT_A:
             case QUANT_B: {
               const int ch = (cursor-QUANT_A);
-              gfxSpicyCursor(12 + 27 * ch, 33, 13);
+              gfxSpicyCursor(12 + 27 * ch, 33, 13, "Q-engine");
               gfxIcon(25 + 5 * ch, 25, ch ? RIGHT_ICON : LEFT_ICON);
               if (EditMode()) {
                 gfxPrint(20, 35, HS::GetQuantEngine(qselect[ch]));
@@ -587,24 +620,55 @@ private:
               break;
             }
 
+            case HOLD_PITCH_A:
+            case HOLD_PITCH_B: {
+              const int ch = (cursor-HOLD_PITCH_A);
+              gfxFrame(25 + 27 * ch, 23, 9, 11, true);
+              gfxIcon(35 + 6 * ch, 25, ch ? RIGHT_ICON : LEFT_ICON, true);
+              break;
+            }
+
             case RANGE:  gfxCursor(10, 43, 13, "Range"); break;
             case SLEW:   gfxCursor(44, 43, 19, "Slew"); break;
 
-            // TODO: mode labels array
             case CVMODE1:
             case CVMODE2:
-                gfxCursor(14 + 34*(cursor-CVMODE1), 33, 10, cvmode_names[cvmode[cursor-CVMODE1]]);
+                gfxCursor(14 + 34*(cursor-CVMODE1), 33, 10, "In Mode", cvmode_names[cvmode[cursor-CVMODE1]]);
                 break;
 
             case OUT_A:
             case OUT_B:
-                gfxCursor(14 + 34*(cursor-OUT_A), 43, 10, outmode_names[outmode[cursor-OUT_A]]);
+                gfxCursor(14 + 34*(cursor-OUT_A), 43, 10, "OutMode", outmode_names[outmode[cursor-OUT_A]]);
                 break;
 
             default: break;
         }
     }
 
+    // for full screen visual of the full thing
+    void DrawSequence() {
+        const int ii = (len_mod <= 16) ? 16 : 32;
+        const int w = 128;
+        for (int b = 0; b < ii; ++b)
+        {
+            int r = reg[0] | (reg[0]<<len_mod);
+            int v = Proportion((r >> b) & 0xff, 0xff, 16);
+            graphics.drawRect((w-2) - (w/ii * b) - 32/ii, 15, 64/ii, v);
+
+            r = reg[1] | (reg[1]<<len_mod);
+            v = Proportion((r >> b) & 0xff, 0xff, 16);
+            graphics.drawRect((w-2) - (w/ii * b) - 32/ii, 63-v, 64/ii, v);
+        }
+
+        // I'm sure these two can be combined with more math.
+        if (len_mod < 16) {
+          const int x_ = 8 * (16 - len_mod);
+          gfxDottedLine(x_, 14, x_, 63);
+        } else if (len_mod > 16 && len_mod < 32) {
+          const int x_ = 4 * (32 - len_mod) - 1;
+          gfxDottedLine(x_, 14, x_, 63);
+        }
+    }
     void DrawIndicator() {
         gfxLine(0, 45, 63, 45);
         gfxLine(0, 62, 63, 62);

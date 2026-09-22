@@ -2,10 +2,11 @@
 
 Phazerville Suite - an active o_C firmware fork
 ===
-[![Firmware Update v1.10](http://img.youtube.com/vi/UvlA5_C1aig/0.jpg)](http://www.youtube.com/watch?v=UvlA5_C1aig "Phazerville Suite v1.10 - O_C Firmware Update")
+[![SynthDad is pretty cool ;P](http://img.youtube.com/vi/kT94mBjvVQI/0.jpg)](http://www.youtube.com/watch?v=kT94mBjvVQI "Ornament and Crime Teensy 4.1 with Phazerville. What's New and Improved?")
 
 <details><summary>More Videos...</summary>
 
+  [![Firmware Update v1.10](http://img.youtube.com/vi/UvlA5_C1aig/0.jpg)](http://www.youtube.com/watch?v=UvlA5_C1aig "Phazerville Suite v1.10 - O_C Firmware Update")
   [![SynthDad's v1.7 update](http://img.youtube.com/vi/bziSog_xscA/0.jpg)](http://www.youtube.com/watch?v=bziSog_xscA "Ornament and Crime Phazerville 1.7: What's new in this big release!")
   [![SynthDad's video overview](http://img.youtube.com/vi/XRGlAmz3AKM/0.jpg)](http://www.youtube.com/watch?v=XRGlAmz3AKM "Phazerville; newest firmware for Ornament and Crime. Tutorial and patch ideas")
   [![Pigeons, Polyrhythms, Music & Math](http://img.youtube.com/vi/J1OH-oomvMA/0.jpg)](http://www.youtube.com/watch?v=J1OH-oomvMA "Pigeons & Polyrhythms / Music & Math")
@@ -27,7 +28,7 @@ There are two distinct _microcontrollers_ aka MCU's (and each has variants) and 
   - DAC and OLED share a SPI bus
   - 8HP uO_c by jakplugg - https://github.com/jakplugg/uO_c
   - original 14HP panels & gerbers are in the `hardware` directory
-* "O_C T4.1" aka **O.R.N.8** - https://github.com/PaulStoffregen/O_C_T41
+* **O.R.N.8** aka "O_C T4.1" - https://github.com/PaulStoffregen/O_C_T41
   - 8ch ADC / 8ch DAC / 2ch Audio In + 2ch Audio Out
   - SPI0 dedicated for DAC
   - SPI1 dedicated for OLED

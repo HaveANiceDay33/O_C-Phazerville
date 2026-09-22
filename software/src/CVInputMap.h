@@ -10,17 +10,22 @@ const int NUM_CV_INPUTS = CVMAP_MAX + 1;
 inline std::array<OC::SemitoneQuantizer, NUM_CV_INPUTS> cv_semitone_quants;
 
 struct CVInputMap {
+  // TODO: rework source into 3 bits for type, 5 bits for index
   int8_t source = 0;
   int8_t attenuversion = 60; // 60 is 100%
                              // max range is +/- 127 (448%)
 
   static constexpr size_t Size = 16; // Make this compatible with Packable
 
-  // increments of 0.1%
-  int Atten() {
-    // exponential curve; 60 becomes 100.0%
-    return 10 * attenuversion * abs(attenuversion) / 36;
+  const bool IsMidi() const {
+    return source > ADC_CHANNEL_COUNT + DAC_CHANNEL_COUNT;
   }
+  void AutoLearn() {
+    if (IsMidi()) {
+      frame.MIDIState.mapping[source - ADC_CHANNEL_LAST - DAC_CHANNEL_LAST - 1].AutoLearn();
+    }
+  }
+
   int RawIn() {
     return source <= ADC_CHANNEL_LAST
       ? frame.inputs[source - 1]
@@ -31,12 +36,12 @@ struct CVInputMap {
 
   int In(int default_value = 0) {
     if (!source) return default_value;
-    return RawIn() * Atten() / 1000;
+    return RawIn() * Atten(attenuversion) / 1000;
   }
 
   float InF(float default_value = 0.0f) {
     if (!source) return default_value;
-    return 0.001f * Atten() * static_cast<float>(RawIn())
+    return 0.001f * Atten(attenuversion) * static_cast<float>(RawIn())
       / static_cast<float>((source <= ADC_CHANNEL_LAST)?HEMISPHERE_MAX_INPUT_CV:HEMISPHERE_MAX_CV);
   }
 
@@ -78,7 +83,7 @@ struct CVInputMap {
   }
 
   void Unpack(uint16_t data) {
-    source = data & 0xFF;
+    source = constrain(data & 0xFF, 0, NUM_CV_INPUTS - 1);
     attenuversion = extract_value<int8_t>(data >> 8);
   }
 };
@@ -117,7 +122,8 @@ struct DigitalInputMap {
     source = constrain(source + dir, -2, num_sources);
   }
 
-  void Reset() {
+  void Reset(bool hard = false) {
+    if (hard) div_mult.steps = 1;
     div_mult.Reset();
     last_gate_state = false;
     clkcount = 0;
@@ -128,7 +134,7 @@ struct DigitalInputMap {
       case CLOCK: {
         if (!clock_m.IsRunning()) return false;
 
-        uint32_t ticks_since_beat = OC::CORE::ticks - clock_m.beat_tick;
+        uint32_t ticks_since_beat = OC::CORE::ticks - clock_m.BeatTick();
         uint32_t tpb = clock_m.GetTempoTicks();
         int mult = (source == -2) ? 1 : ppqn;
 

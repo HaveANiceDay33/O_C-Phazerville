@@ -44,20 +44,6 @@
 #include "VBiasManager.h"
 #include "HSMIDI.h"
 
-#if defined(__IMXRT1062__)
-#include "PhzConfig.h"
-
-USBHost thisUSB;
-USBHub hub1(thisUSB);
-MIDIDevice_BigBuffer usbHostMIDI(thisUSB);
-
-#if defined(ARDUINO_TEENSY41)
-MIDI_CREATE_INSTANCE(HardwareSerial, Serial8, MIDI1);
-#include "AudioIO.h"
-#endif
-
-#endif // __IMXRT1062__
-
 unsigned long LAST_REDRAW_TIME = 0;
 uint_fast8_t MENU_REDRAW = true;
 OC::UiMode ui_mode = OC::UI_MODE_MENU;
@@ -117,42 +103,14 @@ void setup() {
   delay(50);
   Serial.begin(9600);
 
-#if defined(__IMXRT1062__)
-  if (CrashReport) {
-    while (!Serial && millis() < 3000) ; // wait
-    Serial.println(CrashReport);
-    delay(1500);
-  }
-
-  #if defined(ARDUINO_TEENSY41)
-  OC::Pinout_Detect();
-  #endif
-#endif
-#if defined(__MK20DX256__)
   NVIC_SET_PRIORITY(IRQ_PORTB, 0); // TR1 = 0 = PTB16
-#endif
   SPI_init();
   SERIAL_PRINTLN("* O&C BOOTING...");
   SERIAL_PRINTLN("* %s", OC::Strings::VERSION);
 
   OC::DEBUG::Init();
 
-#if defined(__IMXRT1062__) && defined(ARDUINO_TEENSY41)
-  if (DAC8568_Uses_SPI) {
-    // DAC8568 Vref does not turn on by default like DAC8565
-    // best to turn on Vref as early as possible for analog
-    // circuitry to settle
-    OC::DAC::DAC8568_Vref_enable();
-  }
-  if (ADC33131D_Uses_FlexIO) {
-    // ADC33131D wants calibration for Vref, takes ~1150 ms
-    OC::ADC::ADC33131D_Vref_calibrate();
-  } else {
-#endif
-    delay(400);
-#if defined(__IMXRT1062__) && defined(ARDUINO_TEENSY41)
-  }
-#endif
+  delay(400);
 
   OC::calibration_load();
   OC::SetFlipMode(OC::calibration_data.flipcontrols());
@@ -189,30 +147,6 @@ void setup() {
   graphics.print("*Main Screen Turn On*");
   GRAPHICS_END_FRAME();
 
-  // --- more hardware init
-#ifdef __IMXRT1062__
-  #if defined(ARDUINO_TEENSY41)
-  // this takes a couple seconds to timeout if no card
-  SDcard_Ready = SD.begin(BUILTIN_SDCARD);
-
-  // Standard MIDI I/O on Serial8, only for Teensy 4.1
-  if (MIDI_Uses_Serial8) {
-    Serial8.begin(31250);
-    MIDI1.begin(MIDI_CHANNEL_OMNI);
-  }
-
-  if (I2S2_Audio_ADC && I2S2_Audio_DAC) {
-    OC::AudioIO::Init();
-  }
-  #endif
-
-  // initialize LittleFS for config files
-  PhzConfig::setup();
-
-  // USB Host support for both 4.0 and 4.1
-  usbHostMIDI.begin();
-#endif
-
   // Display splash screen and optional calibration
   bool reset_settings = false;
   ui_mode = OC::ui.Splashscreen(reset_settings);
@@ -234,6 +168,8 @@ void setup() {
 
   if (start_cal)
     OC::start_calibration();
+
+  SERIAL_PRINTLN("[End of setup()]");
 }
 
 /*  ---------    main loop  --------  */
@@ -245,9 +181,6 @@ void FASTRUN loop() {
   OC::CORE::app_loop_enabled = true;
   uint32_t menu_redraws = 0;
   while (true) {
-#ifdef __IMXRT1062__
-    thisUSB.Task();
-#endif
 
     // Refresh display
     if (MENU_REDRAW && OC::CORE::display_update_enabled) {
@@ -310,6 +243,11 @@ void FASTRUN loop() {
     if (millis() - LAST_REDRAW_TIME > REDRAW_TIMEOUT_MS)
       MENU_REDRAW = 1;
 
+#ifdef MTP_INTERFACE
+    // handle MTP Disk requests
+    MTP.loop();
+#endif
+
     static size_t cap_idx = 0;
     static elapsedMicros cap_send_time = 0;
     // check for request from PC to capture the screen
@@ -325,12 +263,6 @@ void FASTRUN loop() {
             Serial.printf("'I' = Toggle App ISR [%s]\n", OC::CORE::app_isr_enabled ? "ON" : "OFF");
             Serial.printf("'D' = Toggle Display Redraw [%s]\n", OC::CORE::display_update_enabled ? "ON" : "OFF");
             Serial.printf("'L' = Toggle App Loop [%s]\n", OC::CORE::app_loop_enabled ? "ON" : "OFF");
-#if defined(__IMXRT1062__)
-            Serial.println("'l' = list all files in flash (LittleFS)");
-            Serial.println("'s' = list all files on SD card");
-            Serial.println("'C' = clear/reset default Config file");
-            Serial.println("'F' = format/erase all LittleFS files");
-#endif
             break;
 
           case 'I':
@@ -345,25 +277,6 @@ void FASTRUN loop() {
             OC::CORE::app_loop_enabled = !OC::CORE::app_loop_enabled;
             Serial.printf("App Loop = %s\n", OC::CORE::app_loop_enabled ? "ON" : "OFF");
             break;
-
-#if defined(__IMXRT1062__)
-          case 'C':
-            Serial.println("Resetting Config File!!");
-            PhzConfig::clear_config();
-            PhzConfig::save_config();
-          case 'l':
-            Serial.println(" -=- LittleFS -=- ");
-            PhzConfig::listFiles();
-            break;
-          case 's':
-            Serial.println(" -=- SD Card -=- ");
-            PhzConfig::listFiles(SD);
-            break;
-          case 'F':
-            Serial.println("!! ERASING ALL FILES on LittleFS !!");
-            PhzConfig::eraseFiles();
-            break;
-#endif
 
             // TODO:
           case '+':

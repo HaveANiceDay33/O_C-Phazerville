@@ -36,11 +36,7 @@
 #include "SegmentDisplay.h"
 #include "src/drivers/FreqMeasure/OC_FreqMeasure.h"
 #include "HemisphereApplet.h"
-#ifdef ARDUINO_TEENSY41
-#include "applets/ClockSetupT4.h"
-#else
 #include "applets/ClockSetup.h"
-#endif
 
 static constexpr int CAL8_MAX_TRANSPOSE = 60;
 static constexpr int CAL8OR_PRECISION = 10000;
@@ -56,7 +52,8 @@ struct Cal8ChannelConfig {
     uint8_t mode;
     int8_t offset; // fine-tuning offset
     int16_t scale_factor; // precision of 0.01% as an offset from 100%
-    int8_t transpose; // in semitones
+    int8_t transpose; // in scale degrees
+    int8_t octave_target;
     int8_t transpose_active; // held value while waiting for trigger
     bool chained;
 
@@ -100,36 +97,6 @@ enum Cal8Settings {
     CAL8_ROOTKEY_AND_CLOCKMODE_D,
     CAL8_SCALEMASK_D,
 
-#ifdef ARDUINO_TEENSY41
-    CAL8_SCALE_E,
-    CAL8_SCALEFACTOR_E,
-    CAL8_OFFSET_E,
-    CAL8_TRANSPOSE_E,
-    CAL8_ROOTKEY_AND_CLOCKMODE_E,
-    CAL8_SCALEMASK_E,
-
-    CAL8_SCALE_F,
-    CAL8_SCALEFACTOR_F,
-    CAL8_OFFSET_F,
-    CAL8_TRANSPOSE_F,
-    CAL8_ROOTKEY_AND_CLOCKMODE_F,
-    CAL8_SCALEMASK_F,
-
-    CAL8_SCALE_G,
-    CAL8_SCALEFACTOR_G,
-    CAL8_OFFSET_G,
-    CAL8_TRANSPOSE_G,
-    CAL8_ROOTKEY_AND_CLOCKMODE_G,
-    CAL8_SCALEMASK_G,
-
-    CAL8_SCALE_H,
-    CAL8_SCALEFACTOR_H,
-    CAL8_OFFSET_H,
-    CAL8_TRANSPOSE_H,
-    CAL8_ROOTKEY_AND_CLOCKMODE_H,
-    CAL8_SCALEMASK_H,
-#endif
-
     CAL8_SETTING_LAST
 };
 enum Cal8Presets {
@@ -170,6 +137,7 @@ public:
             if (overflow != 0) {
               q_engine[ch].octave = constrain(overflow, -octave_max, octave_max);
               channel[ch].transpose %= ssize_;
+              channel[ch].octave_target = q_engine[ch].octave;
             }
 
             uint32_t root_and_mode = uint32_t(values_[ix++]);
@@ -193,7 +161,7 @@ public:
             values_[ix++] = channel[ch].scale_factor + 500;
             values_[ix++] = channel[ch].offset + 63;
             values_[ix++] = channel[ch].transpose
-                          + q_engine[ch].octave * SCALE_SIZE(scale)
+                          + channel[ch].octave_target * SCALE_SIZE(scale)
                           + CAL8_MAX_TRANSPOSE;
             values_[ix++] = uint8_t(channel[ch].chained << 7)
                           | ((channel[ch].mode & 0x03) << 4)
@@ -218,8 +186,6 @@ public:
 
 
     void Start() {
-        segment.Init(SegmentSize::BIG_SEGMENTS);
-
         // make sure to turn this off, just in case
         FreqMeasure.end();
         OC::DigitalInputs::reInit();
@@ -233,13 +199,9 @@ public:
     void ClearPreset() {
         for (int ch = 0; ch < QUANT_CHANNEL_COUNT; ++ch) {
             q_engine[ch].quantizer.Init();
-#ifdef ARDUINO_TEENSY41
-            q_engine[ch].Configure(OC::Scales::SCALE_SEMI, 0xffff);
-#else
             // Q1..Q4 default to Semitones
             // Q5..Q8 get initialized as USR1..USR4
             q_engine[ch].Configure((ch<4) ? OC::Scales::SCALE_SEMI : ch - 4, 0xffff);
-#endif
         }
 
         for (int ch = 0; ch < DAC_CHANNEL_LAST; ++ch) {
@@ -311,41 +273,6 @@ public:
             }
         }
 
-#if defined(__IMXRT1062__) && defined(ARDUINO_TEENSY41)
-        while (usbHostMIDI.read()) {
-            const uint8_t message = usbHostMIDI.getType();
-            const uint8_t data1 = usbHostMIDI.getData1();
-            const uint8_t data2 = usbHostMIDI.getData2();
-
-            if (message == usbMIDI.SystemExclusive) {
-                // TODO: consider implementing SysEx import/export for Calibr8or
-                continue;
-            }
-
-            f.MIDIState.ProcessMIDIMsg({usbHostMIDI.getChannel(), message, data1, data2});
-
-            if (message == usbMIDI.NoteOn || message == usbMIDI.NoteOff) {
-              dothething = true;
-            }
-        }
-        while (MIDI1.read()) {
-            const uint8_t message = MIDI1.getType();
-            const uint8_t data1 = MIDI1.getData1();
-            const uint8_t data2 = MIDI1.getData2();
-
-            if (message == usbMIDI.SystemExclusive) {
-                // TODO: consider implementing SysEx import/export for Calibr8or
-                continue;
-            }
-
-            f.MIDIState.ProcessMIDIMsg({MIDI1.getChannel(), message, data1, data2});
-
-            if (message == usbMIDI.NoteOn || message == usbMIDI.NoteOff) {
-              dothething = true;
-            }
-        }
-#endif
-
         if (dothething) {
           // reconfigure with MIDI-derived masks
           // TODO: probably needs attention with new MIDI maps...
@@ -376,6 +303,7 @@ public:
             // clocked transpose
             if (CONTINUOUS == cfg.mode || clocked) {
                 cfg.transpose_active = cfg.transpose;
+                q_engine[ch].octave = cfg.octave_target;
             }
             if (HS::frame.MIDIState.mapping[ch].semitone_mask != 0)
               cfg.transpose_active = 0;
@@ -557,18 +485,12 @@ public:
             return;
         }
 
-        auto &q = q_engine[sel_chan];
         preset_modified = 1;
-        if (HS::q_edit) {
-            // Scale Select
-            HS::NudgeScale(sel_chan, direction);
-            q.quantizer.Requantize();
-            return;
-        }
 
         if (!edit_mode) { // Octave jump
-          q.octave += direction;
-          CONSTRAIN(q.octave, -octave_max, octave_max);
+          channel[sel_chan].octave_target = constrain(
+            channel[sel_chan].octave_target + direction, -octave_max, octave_max
+          );
         }
         else if ( OC::DAC::calibration_data_used( DAC_CHANNEL(sel_chan) ) != 0x01 ) // not autotuned
         {
@@ -589,12 +511,6 @@ public:
         }
 
         preset_modified = 1;
-        if (HS::q_edit) {
-            // Root Note
-            HS::SetRootNote(sel_chan, HS::GetRootNote(sel_chan) + direction);
-            q_engine[sel_chan].quantizer.Requantize();
-            return;
-        }
 
         if (!edit_mode) {
             SetTranspose(sel_chan, channel[sel_chan].transpose + direction);
@@ -604,14 +520,17 @@ public:
         }
     }
 
+    void NudgeOctave(const int ch, const int dir) {
+      channel[ch].octave_target = constrain(
+        channel[ch].octave_target + dir, -octave_max, octave_max
+      );
+    }
     void SetTranspose(const int chan, int val) {
       const int ssize_ = SCALE_SIZE(HS::GetScale(chan));
       CONSTRAIN(val, -CAL8_MAX_TRANSPOSE, CAL8_MAX_TRANSPOSE);
       const int overflow = val / ssize_;
       if (overflow != 0) {
-        auto &q = q_engine[chan];
-        q.octave += overflow;
-        CONSTRAIN(q.octave, -octave_max, octave_max);
+        NudgeOctave(chan, overflow);
         val %= ssize_;
       }
       channel[chan].transpose = val;
@@ -630,7 +549,7 @@ public:
 
     int trigger_flash[DAC_CHANNEL_LAST];
 
-    SegmentDisplay segment;
+    SegmentDisplay segment{SegmentSize::BIG_SEGMENTS};
     Cal8ChannelConfig channel[DAC_CHANNEL_LAST];
 
     void DrawPresetSelector() {
@@ -691,7 +610,7 @@ public:
 
         // -- LCD Display Section --
         int s = SCALE_SIZE(HS::GetScale(sel_chan));
-        int degrees = channel[sel_chan].transpose + q_engine[sel_chan].octave * s;
+        int degrees = channel[sel_chan].transpose + channel[sel_chan].octave_target * s;
         const bool positive = degrees >= 0;
         const int octave = degrees / s;
         degrees %= s;
@@ -772,35 +691,6 @@ SETTINGS_DECLARE(Calibr8orPreset, CAL8_SETTING_LAST) {
     {0, 0, 255, "Root Key + Mode D", NULL, settings::STORAGE_TYPE_U8},
     {0, 0, 0xffff, "Scale Mask D", NULL, settings::STORAGE_TYPE_U16},
 
-#ifdef ARDUINO_TEENSY41
-    {0, 0, 65535, "Scale E", NULL, settings::STORAGE_TYPE_U16},
-    {0, 0, 65535, "CV Scaling Factor E", NULL, settings::STORAGE_TYPE_U16},
-    {0, 0, 255, "Offset Bias E", NULL, settings::STORAGE_TYPE_U8},
-    {0, 0, 255, "Transpose E", NULL, settings::STORAGE_TYPE_U8},
-    {0, 0, 255, "Root Key + Mode E", NULL, settings::STORAGE_TYPE_U8},
-    {0, 0, 0xffff, "Scale Mask E", NULL, settings::STORAGE_TYPE_U16},
-
-    {0, 0, 65535, "Scale F", NULL, settings::STORAGE_TYPE_U16},
-    {0, 0, 65535, "CV Scaling Factor F", NULL, settings::STORAGE_TYPE_U16},
-    {0, 0, 255, "Offset Bias F", NULL, settings::STORAGE_TYPE_U8},
-    {0, 0, 255, "Transpose F", NULL, settings::STORAGE_TYPE_U8},
-    {0, 0, 255, "Root Key + Mode F", NULL, settings::STORAGE_TYPE_U8},
-    {0, 0, 0xffff, "Scale Mask F", NULL, settings::STORAGE_TYPE_U16},
-
-    {0, 0, 65535, "Scale G", NULL, settings::STORAGE_TYPE_U16},
-    {0, 0, 65535, "CV Scaling Factor G", NULL, settings::STORAGE_TYPE_U16},
-    {0, 0, 255, "Offset Bias G", NULL, settings::STORAGE_TYPE_U8},
-    {0, 0, 255, "Transpose G", NULL, settings::STORAGE_TYPE_U8},
-    {0, 0, 255, "Root Key + Mode G", NULL, settings::STORAGE_TYPE_U8},
-    {0, 0, 0xffff, "Scale Mask G", NULL, settings::STORAGE_TYPE_U16},
-
-    {0, 0, 65535, "Scale H", NULL, settings::STORAGE_TYPE_U16},
-    {0, 0, 65535, "CV Scaling Factor H", NULL, settings::STORAGE_TYPE_U16},
-    {0, 0, 255, "Offset Bias H", NULL, settings::STORAGE_TYPE_U8},
-    {0, 0, 255, "Transpose H", NULL, settings::STORAGE_TYPE_U8},
-    {0, 0, 255, "Root Key + Mode H", NULL, settings::STORAGE_TYPE_U8},
-    {0, 0, 0xffff, "Scale Mask H", NULL, settings::STORAGE_TYPE_U16},
-#endif
 };
 
 
@@ -875,11 +765,12 @@ void Calibr8or_handleButtonEvent(const UI::Event &event) {
     case UI::EVENT_BUTTON_DOWN:
         // Quantizer popup editor intercepts everything on-press
         if (HS::q_edit) {
-          if (event.control == OC::CONTROL_BUTTON_UP)
-            HS::NudgeOctave(HS::qview, 1);
-          else if (event.control == OC::CONTROL_BUTTON_DOWN)
-            HS::NudgeOctave(HS::qview, -1);
-          else {
+          // TODO: popup UI won't show target octave in clocked transpose mode
+          if (event.control == OC::CONTROL_BUTTON_UP) {
+            Calibr8or_instance.NudgeOctave(HS::qview, 1);
+          } else if (event.control == OC::CONTROL_BUTTON_DOWN) {
+            Calibr8or_instance.NudgeOctave(HS::qview, -1);
+          } else {
             HS::q_edit = 0;
             HS::popup_tick = 0;
           }

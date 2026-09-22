@@ -36,8 +36,6 @@ public:
         current_import_scale = 5;
         undo_value = OC::user_scales[current_scale].notes[0];
         octave = 1;
-        segment.Init(SegmentSize::BIG_SEGMENTS);
-        tinynumbers.Init(SegmentSize::TINY_SEGMENTS);
 	}
 
 	void Resume() {
@@ -174,8 +172,8 @@ private:
     bool import_mode;
     int current_quantized;
     int octave;
-    SegmentDisplay segment;
-    SegmentDisplay tinynumbers;
+    SegmentDisplay segment{SegmentSize::BIG_SEGMENTS};
+    SegmentDisplay tinynumbers{SegmentSize::TINY_SEGMENTS};
 
     void DrawInterface() {
         // The interface is a spreadsheet-like 4x4 grid, with each
@@ -272,9 +270,9 @@ private:
     }
 
     void ChangeImport(int direction) {
-        current_import_scale += direction;
-        if (current_import_scale == OC::Scales::NUM_SCALES) current_import_scale = 0;
-        if (current_import_scale < 0) current_import_scale = OC::Scales::NUM_SCALES - 1;
+      current_import_scale = constrain(
+        current_import_scale + direction, 0, OC::Scales::NUM_SCALES - 1
+      );
     }
 
     void ChangeLength(int direction) {

@@ -23,6 +23,40 @@
 #ifndef UTIL_MATH_H_
 #define UTIL_MATH_H_
 
+#include "util_macros.h"
+
+// Simulated fixed floats by multiplying and dividing by powers of 2
+#ifndef int2simfloat
+#define int2simfloat(x) (x << 14)
+#define simfloat2int(x) (x >> 14)
+using simfloat = int32_t;
+#endif
+
+/* Proportion method using simfloat, useful for calculating scaled values given
+ * a fractional value.
+ *
+ * Solves this:  numerator        ???
+ *              ----------- = -----------
+ *              denominator       max
+ *
+ * For example, to convert a parameter with a range of 1 to 100 into value scaled
+ * to HEMISPHERE_MAX_CV, to be sent to the DAC:
+ *
+ * Out(ch, Proportion(value, 100, HEMISPHERE_MAX_CV));
+ *
+ */
+constexpr int Proportion(const int numerator, const int denominator, const int max_value) {
+    simfloat proportion = int2simfloat((int32_t)abs(numerator)) / (int32_t)denominator;
+    int scaled = simfloat2int(proportion * max_value);
+    return numerator >= 0 ? scaled : -scaled;
+}
+
+// Given a bipolar param value from -127 to +128, returns a scalar value in increments of 0.1%
+constexpr int Atten(int8_t att) {
+  // exponential curve; 60 becomes 100.0%
+  return 10 * att * abs(att) / 36;
+}
+
 // Woo. Funky macro magic to avoid dividing by non-power-of-two.
 // Essentially a quick fixed-point calculation, but only valid up to 2^exp
 
@@ -84,6 +118,46 @@ struct SmoothedValue {
 
   void set(T value) {
     value_ = value;
+  }
+};
+
+struct SlewedValue {
+  static constexpr int EXTRA_PRECISION = 4;
+  int target_, value_;
+
+  void set(int val, bool override = false) {
+    target_ = val << EXTRA_PRECISION;
+    if (override) value_ = target_;
+  }
+
+  void push(uint8_t slew) {
+    if (slew) {
+      int diff = target_ - value_;
+      int delta = 1;
+      if (slew <= 50)
+        delta += 250 - 4 * slew;
+      else
+        delta += 100 - slew;
+      CONSTRAIN(delta, 0, abs(diff));
+      if (diff < 0) delta = -delta;
+      value_ += delta;
+    } else
+      value_ = target_;
+  }
+
+  // attenuverted getter
+  int get(int8_t atten) const {
+    // exponential curve; 60 becomes 100.0%; 127 == 448%
+    return get() * Atten(atten) / 1000;
+
+    // linear curve; 63 == 100%; 126 == 200%
+    //return Proportion(atten, 63, get());
+  }
+  int get() const {
+    return value_ >> EXTRA_PRECISION;
+  }
+  int get_target() const {
+    return target_ >> EXTRA_PRECISION;
   }
 };
 

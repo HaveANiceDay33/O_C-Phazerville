@@ -21,6 +21,8 @@
 // SOFTWARE.
 
 #include "OC_core.h"
+#include "OC_gpio.h"
+#include "OC_scales.h"
 #include "OC_ui.h"
 #include "OC_apps.h"
 #include "OC_menus.h"
@@ -31,21 +33,16 @@
 #include "OC_patterns.h"
 #include "enigma/TuringMachine.h"
 #include "src/drivers/FreqMeasure/OC_FreqMeasure.h"
+#include "util/util_misc.h"
 #include "util/util_pagestorage.h"
 #include "util/EEPROMStorage.h"
-#include "PhzConfig.h"
 #include "VBiasManager.h"
 #include "HSClockManager.h"
 
 namespace menu = OC::menu;
 
 #ifndef NO_HEMISPHERE
-
-#ifdef ARDUINO_TEENSY41
-#include "APP_QUADRANTS.h"
-#endif
 #include "APP_HEMISPHERE.h"
-
 #endif
 
 #include "APP_CALIBR8OR.h"
@@ -69,7 +66,9 @@ namespace menu = OC::menu;
 #include "APP_ENIGMA.h"
 #include "APP_NeuralNetwork.h"
 #include "APP_SCALEEDITOR.h"
+#ifndef NO_HEMISPHERE
 #include "APP_WAVEFORMEDITOR.h"
+#endif
 #include "APP_PONGGAME.h"
 #include "APP_Backup.h"
 #include "APP_SETTINGS.h"
@@ -92,9 +91,6 @@ static constexpr OC::App available_apps[] = {
   DECLARE_APP('S','E', "Setup / About", Settings),
 
 #ifndef NO_HEMISPHERE
-  #ifdef ARDUINO_TEENSY41
-  DECLARE_APP('Q','S', "Quadrants", QUADRANTS),
-  #endif
   DECLARE_APP('H','S', "Hemispheres", HEMISPHERE),
 #endif
 
@@ -162,7 +158,9 @@ static constexpr OC::App available_apps[] = {
   DECLARE_APP('N','N', "Neural Net", NeuralNetwork),
   #endif
   DECLARE_APP('S','C', "Scale Editor", SCALEEDITOR),
+#ifndef NO_HEMISPHERE
   DECLARE_APP('W','A', "Waveform Editor", WaveformEditor),
+#endif
   #ifdef ENABLE_APP_PONG
   DECLARE_APP('P','O', "Pong", PONGGAME),
   #endif
@@ -181,7 +179,7 @@ namespace OC {
 // Global settings are stored separately to actual app setings.
 // The theory is that they might not change as often.
 struct GlobalSettings {
-  static constexpr uint32_t FOURCC = FOURCC<'O','C','S',2>::value;
+  static constexpr uint32_t FOURCC = FourCC<'O','C','S',2>::value;
 
   bool encoders_enable_acceleration;
   bool reserved0;
@@ -189,8 +187,6 @@ struct GlobalSettings {
   uint32_t DAC_scaling;
   uint16_t current_app_id;
 
-#ifdef __IMXRT1062__
-#else
   OC::Scale user_scales[OC::Scales::SCALE_USER_COUNT];
   OC::Pattern user_patterns[OC::Patterns::PATTERN_USER_COUNT];
   // These both occupy 160 bytes
@@ -199,12 +195,13 @@ struct GlobalSettings {
 #else
   HS::TuringMachine user_turing_machines[HS::TURING_MACHINE_COUNT];
 #endif
+#ifndef NO_HEMISPHERE
   HS::VOSegment user_waveforms[HS::VO_SEGMENT_COUNT];
+#endif
   OC::Autotune_data auto_calibration_data[DAC_CHANNEL_LAST];
 
   HS::QuantEngineSettings q_engines[QUANT_CHANNEL_COUNT];
   HS::MIDIMapSettings midi_maps[MIDIMAP_MAX];
-#endif
 };
 
 // App settings are packed into a single blob of binary data; each app's chunk
@@ -218,7 +215,7 @@ struct AppChunkHeader {
 } __attribute__((packed));
 
 struct AppData {
-  static constexpr uint32_t FOURCC = FOURCC<'O','C','A',4>::value;
+  static constexpr uint32_t FOURCC = FourCC<'O','C','A',4>::value;
 
   static constexpr size_t kAppDataSize = EEPROM_APPDATA_BINARY_SIZE;
   char data[kAppDataSize];
@@ -228,27 +225,10 @@ struct AppData {
 using AppDataStorage = PageStorage<EEPROMStorage, EEPROM_APPDATA_START, EEPROM_APPDATA_END, AppData>;
 
 DMAMEM GlobalSettings global_settings;
-#ifdef __IMXRT1062__
-enum GlobalSettingsDataKeys : uint16_t {
-  // upper 8 bits of key, non-zero
-  METADATA_KEY        = 1 << 8, // selected app id, etc.
-  USER_SCALES_KEY     = 2 << 8,
-  SEQUENCES_KEY       = 3 << 8,
-  CHORDS_KEY          = 4 << 8,
-  TURING_MACHINES_KEY = 5 << 8,
-  WAVEFORMS_KEY       = 6 << 8,
-  AUTOCAL_KEY         = 7 << 8,
-
-  // lower 8 bits of key
-  SCALE_METADATA = 0xff,
-  SCALE_NOTEDATA = 0,
-};
-#else
 static_assert(sizeof(GlobalSettings) < (EEPROM_GLOBALSETTINGS_END - EEPROM_GLOBALSETTINGS_START), "GlobalSettings EEPROM size overflow");
 
 using GlobalSettingsStorage = PageStorage<EEPROMStorage, EEPROM_GLOBALSETTINGS_START, EEPROM_GLOBALSETTINGS_END, GlobalSettings>;
 DMAMEM GlobalSettingsStorage global_settings_storage;
-#endif
 
 DMAMEM AppData app_settings;
 DMAMEM AppDataStorage app_data_storage;
@@ -260,93 +240,6 @@ FLASHMEM
 void save_global_settings() {
   SERIAL_PRINTLN("Saving global settings...");
 
-#ifdef __IMXRT1062__
-  //PhzConfig::clear_config();
-  PhzConfig::load_config(); // use default config file
-
-  // Metadata
-  uint64_t data = 0;
-  global_settings.DAC_scaling = OC::DAC::store_scaling();
-  Pack(data, PackLocation{0, 16}, global_settings.current_app_id);
-  Pack(data, PackLocation{16, 1}, global_settings.encoders_enable_acceleration);
-  // 15 bits empty...
-  Pack(data, PackLocation{32, 32}, global_settings.DAC_scaling);
-  PhzConfig::setValue(METADATA_KEY, data);
-
-  // User Scales
-  for (size_t i = 0; i < Scales::SCALE_USER_COUNT; ++i) {
-    PhzConfig::setValue(USER_SCALES_KEY | (i << 4) | SCALE_METADATA, uint64_t(user_scales[i].span) << 16 | user_scales[i].num_notes);
-    data = 0;
-    for (size_t nn = 0; nn < user_scales[i].num_notes; ++nn) {
-      Pack(data, PackLocation{(nn & 0x3)*16, 16}, (uint16_t)user_scales[i].notes[nn]);
-
-      // after every 4th value (64 bits), store and reset
-      if ((nn & 0x3) == 0x3) {
-        PhzConfig::setValue(USER_SCALES_KEY | (i << 4) | (SCALE_NOTEDATA + (nn >> 2)), data);
-        data = 0;
-      }
-    }
-  }
-
-  // User Patterns aka Sequences
-  for (size_t i = 0; i < Patterns::PATTERN_USER_COUNT; ++i) {
-    data = 0;
-    for (size_t step = 0; step < ARRAY_SIZE(Pattern::notes); ++step) {
-      Pack(data, PackLocation{(step & 0x3)*16, 16}, (uint16_t)user_patterns[i].notes[step]);
-      if ((step & 0x3) == 0x3) {
-        PhzConfig::setValue(SEQUENCES_KEY | (i << 3) | (step >> 2), data);
-        data = 0;
-      }
-    }
-  }
-
-  // User Chords (progression sequences from Acid Curds)
-  for (size_t i = 0; i < Chords::CHORDS_USER_COUNT; ++i) {
-    data = 0;
-    Pack(data, PackLocation{0, 8}, (uint8_t)user_chords[i].quality);
-    Pack(data, PackLocation{8, 8}, (uint8_t)user_chords[i].inversion);
-    Pack(data, PackLocation{16,8}, (uint8_t)user_chords[i].voicing);
-    Pack(data, PackLocation{24,8}, (uint8_t)user_chords[i].base_note);
-    Pack(data, PackLocation{32,8}, (uint8_t)user_chords[i].octave);
-    PhzConfig::setValue(CHORDS_KEY | i, data);
-  }
-
-  // User Turing Machines (for Enigma and friends)
-  for (size_t i = 0; i < HS::TURING_MACHINE_COUNT; ++i) {
-    data = 0;
-    Pack(data, PackLocation{0, 16}, HS::user_turing_machines[i].reg);
-    Pack(data, PackLocation{16, 8}, HS::user_turing_machines[i].len);
-    Pack(data, PackLocation{24, 1}, HS::user_turing_machines[i].favorite);
-    PhzConfig::setValue(TURING_MACHINES_KEY | i, data);
-  }
-
-  data = 0;
-  // User Waveform (custom VectorOsc shapes)
-  for (size_t i = 0; i < HS::VO_SEGMENT_COUNT; ++i) {
-    Pack(data, PackLocation{(i & 0x3) * 16, 16}, uint16_t(HS::user_waveforms[i].level) << 8 | HS::user_waveforms[i].time);
-
-    if ((i & 0x3) == 0x3) {
-      PhzConfig::setValue(WAVEFORMS_KEY | (i >> 2), data);
-      data = 0;
-    }
-  }
-
-  // Auto Calibration Data
-  for (size_t i = 0; i < DAC_CHANNEL_LAST; ++i) {
-    data = 0;
-    PhzConfig::setValue(AUTOCAL_KEY | (0xff - i), auto_calibration_data[i].use_auto_calibration_);
-
-    for (size_t oct = 0; oct < OCTAVES + 1; ++oct) {
-      Pack(data, PackLocation{(oct & 0x3) * 16, 16}, auto_calibration_data[i].auto_calibrated_octaves[oct]);
-      if ((oct & 0x3) == 0x3) {
-        PhzConfig::setValue(AUTOCAL_KEY | (i << 4) | (oct >> 2), data);
-        data = 0;
-      }
-    }
-  }
-
-  PhzConfig::save_config(); // save to default config file
-#else
   memcpy(global_settings.user_scales, OC::user_scales, sizeof(OC::user_scales));
   memcpy(global_settings.user_patterns, OC::user_patterns, sizeof(OC::user_patterns));
 #ifdef ENABLE_APP_CHORDS
@@ -354,7 +247,9 @@ void save_global_settings() {
 #else
   memcpy(global_settings.user_turing_machines, HS::user_turing_machines, sizeof(HS::user_turing_machines));
 #endif
+#ifndef NO_HEMISPHERE
   memcpy(global_settings.user_waveforms, HS::user_waveforms, sizeof(HS::user_waveforms));
+#endif
   memcpy(global_settings.auto_calibration_data, OC::auto_calibration_data, sizeof(OC::auto_calibration_data));
   // scaling settings:
   global_settings.DAC_scaling = OC::DAC::store_scaling();
@@ -377,7 +272,6 @@ void save_global_settings() {
 
   global_settings_storage.Save(global_settings);
   SERIAL_PRINTLN("Saved global settings: page_index %d", global_settings_storage.page_index());
-#endif
 }
 
 static constexpr size_t total_storage_size() {
@@ -509,12 +403,19 @@ int index_of(uint16_t id) {
 FLASHMEM
 void Init(bool reset_settings) {
 
+  SERIAL_PRINTLN("[App Initializations]");
+
   Scales::Init();
   AUTOTUNE::Init();
   HS::Init();
-  for (auto &app : available_apps)
+  for (auto &app : available_apps) {
+    SERIAL_PRINTLN("Starting App: %s", app.name);
     app.Init();
+  }
 
+#ifndef NO_HEMISPHERE
+  HS::showhide_cursor.Init(0, HEMISPHERE_AVAILABLE_APPLETS - 1);
+#endif
   HS::frame.Init();
 
   global_settings.current_app_id = DEFAULT_APP_ID;
@@ -533,11 +434,7 @@ void Init(bool reset_settings) {
         *d++ = 0;
       SERIAL_PRINTLN("...done");
       SERIAL_PRINTLN("Skip settings, using defaults...");
-#ifdef __IMXRT1062__
-      PhzConfig::eraseFiles();
-#else
       global_settings_storage.Init();
-#endif
       app_data_storage.Init();
     } else {
       reset_settings = false;
@@ -545,101 +442,6 @@ void Init(bool reset_settings) {
   }
 
   if (!reset_settings) {
-#ifdef __IMXRT1062__
-    PhzConfig::load_config(); // use default config file
-
-    // Metadata
-    uint64_t data = 0;
-    if (PhzConfig::getValue(METADATA_KEY, data)) {
-      global_settings.current_app_id = Unpack(data, PackLocation{0, 16});
-      global_settings.encoders_enable_acceleration = Unpack(data, PackLocation{16, 1});
-      // 15 bits empty...
-      global_settings.DAC_scaling = Unpack(data, PackLocation{32, 32});
-      OC::DAC::restore_scaling(global_settings.DAC_scaling);
-
-      // User Scales
-      for (size_t i = 0; i < Scales::SCALE_USER_COUNT; ++i) {
-        if (!PhzConfig::getValue(USER_SCALES_KEY | (i << 4) | SCALE_METADATA, data))
-          break;
-
-        user_scales[i].span = (data >> 16) & 0xffff;
-        user_scales[i].num_notes = data & 0x00ff;
-
-        for (size_t nn = 0; nn < user_scales[i].num_notes; ++nn) {
-          // the first of every 4 values needs a new config chunk
-          if ((nn & 0x3) == 0x0) {
-            data = 0;
-            if (!PhzConfig::getValue(USER_SCALES_KEY | (i << 4) | (SCALE_NOTEDATA + (nn >> 2)), data))
-              break;
-          }
-          user_scales[i].notes[nn] = Unpack(data, PackLocation{(nn & 0x3)*16, 16});
-        }
-      }
-
-      // User Patterns aka Sequences
-      for (size_t i = 0; i < Patterns::PATTERN_USER_COUNT; ++i) {
-        for (size_t step = 0; step < ARRAY_SIZE(Pattern::notes); ++step) {
-          if ((step & 0x3) == 0x0) {
-            data = 0;
-            if (!PhzConfig::getValue(SEQUENCES_KEY | (i << 3) | (step >> 2), data))
-              break;
-          }
-          user_patterns[i].notes[step] = Unpack(data, PackLocation{(step & 0x3)*16, 16});
-        }
-      }
-
-      // User Chords (progression sequences from Acid Curds)
-      for (size_t i = 0; i < Chords::CHORDS_USER_COUNT; ++i) {
-        data = 0;
-        if (!PhzConfig::getValue(CHORDS_KEY | i, data))
-          break;
-        user_chords[i].quality = Unpack(data, PackLocation{0, 8});
-        user_chords[i].inversion = Unpack(data, PackLocation{8, 8});
-        user_chords[i].voicing = Unpack(data, PackLocation{16,8});
-        user_chords[i].base_note = Unpack(data, PackLocation{24,8});
-        user_chords[i].octave = Unpack(data, PackLocation{32,8});
-      }
-
-      // -- User Turing Machines (for Enigma and friends)
-      for (size_t i = 0; i < HS::TURING_MACHINE_COUNT; ++i) {
-        data = 0;
-        if (!PhzConfig::getValue(TURING_MACHINES_KEY | i, data))
-          break;
-        HS::user_turing_machines[i].reg = Unpack(data, PackLocation{0, 16});
-        HS::user_turing_machines[i].len = Unpack(data, PackLocation{16, 8});
-        HS::user_turing_machines[i].favorite = Unpack(data, PackLocation{24, 1});
-      }
-
-      // -- User Waveform (custom VectorOsc shapes)
-      for (size_t i = 0; i < HS::VO_SEGMENT_COUNT; ++i) {
-        if ((i & 0x3) == 0x0) {
-          data = 0;
-          if (!PhzConfig::getValue(WAVEFORMS_KEY | (i >> 2), data))
-            break;
-        }
-        uint16_t wavedata = Unpack(data, PackLocation{(i & 0x3) * 16, 16});
-        HS::user_waveforms[i].level = (wavedata >> 8) & 0xff;
-        HS::user_waveforms[i].time = wavedata & 0xff;
-      }
-
-      // -- Auto Calibration Data
-      for (size_t i = 0; i < DAC_CHANNEL_LAST; ++i) {
-        data = 0;
-        if (!PhzConfig::getValue(AUTOCAL_KEY | (0xff - i), data))
-          break;
-        auto_calibration_data[i].use_auto_calibration_ = data;
-        for (size_t oct = 0; oct < OCTAVES + 1; ++oct) {
-          if ((oct & 0x3) == 0x0) {
-            data = 0;
-            if (!PhzConfig::getValue(AUTOCAL_KEY | (i << 4) | (oct >> 2), data))
-              break;
-          }
-          auto_calibration_data[i].auto_calibrated_octaves[oct] = Unpack(data, PackLocation{(oct & 0x3) * 16, 16});
-        }
-      }
-    }
-
-#else
     SERIAL_PRINTLN("Load global settings: size: %u, PAGESIZE=%u, PAGES=%u, LENGTH=%u",
                   sizeof(GlobalSettings),
                   GlobalSettingsStorage::PAGESIZE,
@@ -658,7 +460,9 @@ void Init(bool reset_settings) {
 #else
       memcpy(HS::user_turing_machines, global_settings.user_turing_machines, sizeof(HS::user_turing_machines));
 #endif
+#ifndef NO_HEMISPHERE
       memcpy(HS::user_waveforms, global_settings.user_waveforms, sizeof(HS::user_waveforms));
+#endif
       memcpy(auto_calibration_data, global_settings.auto_calibration_data, sizeof(auto_calibration_data));
       DAC::choose_calibration_data(); // either use default data, or auto_calibration_data
       DAC::restore_scaling(global_settings.DAC_scaling); // recover output scaling settings
@@ -683,7 +487,6 @@ void Init(bool reset_settings) {
       HS::frame.MIDIState.UpdateMidiChannelFilter();
       HS::frame.MIDIState.UpdateMaxPolyphony();
     }
-#endif
 
     // old school EEPROM storage for legacy apps
     SERIAL_PRINTLN("Load app data: size is %u, PAGESIZE=%u, PAGES=%u, LENGTH=%u",
@@ -702,7 +505,9 @@ void Init(bool reset_settings) {
   // Validation to guard against junk data
   Chords::Validate();
   Scales::Validate();
+#ifndef NO_HEMISPHERE
   WaveformManager::Validate();
+#endif
   for (int i = 0; i < HS::TURING_MACHINE_COUNT; ++i) {
     HS::user_turing_machines[i].Validate();
   }

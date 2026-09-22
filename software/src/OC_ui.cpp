@@ -14,6 +14,7 @@
 #include "OC_options.h"
 #include "PhzIcons.h"
 #include "src/drivers/display.h"
+#include "HSUtils.h"
 
 #ifdef VOR
 #include "VBiasManager.h"
@@ -32,17 +33,11 @@ void Ui::Init() {
 
 #if defined(VOR)
   static const int button_pins[] = { but_top, but_bot, butL, butR, but_mid };
-#elif defined(ARDUINO_TEENSY41)
-  static const int button_pins[] = { but_top, but_bot, butL, butR, but_mid, but_top2, but_bot2 };
 #else
   static const int button_pins[] = { but_top, but_bot, butL, butR };
 #endif
 
-#if defined(ARDUINO_TEENSY41)
-  const size_t count = (but_mid == 0xFF)? 4 : CONTROL_BUTTON_LAST;
-#else
   const size_t count = CONTROL_BUTTON_LAST;
-#endif
   for (size_t i = 0; i < count; ++i) {
     buttons_[i].Init(button_pins[i], OC_GPIO_BUTTON_PINMODE);
   }
@@ -90,11 +85,7 @@ void FASTRUN Ui::Poll() {
   uint32_t now = ++ticks_;
   uint16_t button_state = 0;
 
-#if defined(ARDUINO_TEENSY41)
-  const size_t count = (but_mid == 0xFF)? 4 : CONTROL_BUTTON_LAST;
-#else
   const size_t count = CONTROL_BUTTON_LAST;
-#endif
   for (size_t i = 0; i < count; ++i) {
     if (buttons_[i].Poll())
       button_state |= control_mask(i);
@@ -230,7 +221,7 @@ UiMode Ui::Splashscreen(bool &reset_settings) {
     GRAPHICS_BEGIN_FRAME(true);
 
     menu::DefaultTitleBar::Draw();
-    graphics.print( NorthernLightModular? OC::Strings::NAME_NLM : OC::Strings::NAME);
+    graphics.print( DAC_is_inverted? OC::Strings::NAME_NLM : OC::Strings::NAME);
     weegfx::coord_t y = menu::CalcLineY(0);
 
     graphics.setPrintPos(menu::kIndentDx, y + menu::kTextDy);
@@ -258,8 +249,8 @@ UiMode Ui::Splashscreen(bool &reset_settings) {
     const uint8_t *iconroulette[] = {
       PhzIcons::clockDivider, PhzIcons::clockSkip,
       PhzIcons::clock_warp_A, PhzIcons::clock_warp_B,
-      PhzIcons::polyDiv,
-      ZAP_ICON
+      PhzIcons::snowflakeB,
+      PhzIcons::snowflakeA
     };
 
     static int pick = 0;
@@ -274,6 +265,8 @@ UiMode Ui::Splashscreen(bool &reset_settings) {
     if (w > 128) w = 256 - w;
     graphics.invertRect(0, 56, w, 8);
 
+    ZapScreensaver();
+
     /* fixes spurious button presses when booting ? */
     while (event_queue_.available())
       (void)event_queue_.PullEvent();
@@ -284,9 +277,13 @@ UiMode Ui::Splashscreen(bool &reset_settings) {
 
   do {
     GRAPHICS_BEGIN_FRAME(true);
+    /*
+    const uint8_t *flake_icon[] = { PhzIcons::snowflakeA, PhzIcons::snowflakeB, ZAP_ICON };
     for (int i=0; i<128; ++i) {
-      graphics.drawBitmap8(i*8%128 + random(2), i/16*8 + random(2), 8, ZAP_ICON);
+      graphics.drawBitmap8(i*8%128 + random(2), i/16*8 + random(2), 8, flake_icon[random(3)]);
     }
+    */
+    ZapScreensaver();
 
     graphics.clearRect(27, 22, 74, 22);
     graphics.setPrintPos(28, 23);

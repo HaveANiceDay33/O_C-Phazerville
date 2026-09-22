@@ -1,13 +1,11 @@
 #include <Arduino.h>
+#include "HSClockManager.h"
 #include "OC_core.h"
+#include "SegmentDisplay.h"
 #include "tideslite.h"
 #include "OC_gpio.h"
 #include "HSUtils.h"
 #include "HSIOFrame.h"
-
-#ifdef ARDUINO_TEENSY41
-#include "SD.h"
-#endif
 
 const int ProportionCV(const int cv_value, const int max_pixels, const int max_cv) {
     int prop = constrain(Proportion(cv_value, max_cv, max_pixels), -max_pixels, max_pixels);
@@ -18,13 +16,14 @@ namespace HS {
 
   uint32_t popup_tick; // for button feedback
   PopupType popup_type = MENU_POPUP;
+  const char* popup_msg;
+  ErrMsgIndex msg_idx;
+
   int q_edit = 0; // edit cursor for quantizer popup, 0 = not editing
   uint8_t qview = 0; // which quantizer's setting is shown in popup
 
   int midi_edit = 0;
   uint8_t mview = 0;
-
-  ErrMsgIndex msg_idx;
 
   OC::SemitoneQuantizer input_quant[ADC_CHANNEL_LAST];
 
@@ -35,7 +34,7 @@ namespace HS {
   int next_ch = -1;
   int8_t next_octave, next_root_note;
 
-#if defined(ARDUINO_TEENSY41) || defined(VOR)
+#if defined(VOR)
   int octave_max = 6;
 #endif
 
@@ -44,32 +43,61 @@ namespace HS {
   DigitalInputMap trigmap[ADC_CHANNEL_LAST];
   CVInputMap cvmap[ADC_CHANNEL_LAST];
   uint8_t trig_length = 10; // in ms, multiplier for HEMISPHERE_CLOCK_TICKS
-  uint8_t screensaver_mode = SCREEN_STARS; // ScreensaverMode
+  uint8_t screensaver_mode = SCREEN_BEATS; // ScreensaverMode
   const char * const ssmodes[SCREENSAVER_MODE_COUNT] = {
     "[blank]",
     "Meters", "Scope",
-    "Zaps", "Stars", "Zips",
+    "Snow!", "Stars", "Zips",
+    "Beats",
   };
 
   OC::menu::ScreenCursor<5> showhide_cursor;
 
   FLASHMEM
   void Init() {
+    const int default_scales[8] = {
+      OC::Scales::SCALE_SEMI + 0,
+      OC::Scales::SCALE_SEMI + 1, // Ionian
+      OC::Scales::SCALE_SEMI + 6, // Aeolian
+      OC::Scales::SCALE_SEMI + 138, // Harmonic Minor
+
+      OC::Scales::SCALE_SEMI + 5, // Mixolydian
+      OC::Scales::SCALE_SEMI + 7, // Locrian
+      OC::Scales::SCALE_SEMI + 10, // Pentatonic Major
+      OC::Scales::SCALE_SEMI + 11, // Pentatonic Minor
+    };
+
     for (auto &iq : input_quant)
       iq.Init();
 
-    for (auto &q : q_engine)
-      q.quantizer.Init();
+    for (int i = 0; i < QUANT_CHANNEL_COUNT; ++i) {
+      q_engine[i].quantizer.Init();
+      q_engine[i].Configure(default_scales[i], 0xffff);
+    }
 
+    ResetMappings();
+  }
+  void ResetMappings() {
     for (int i = 0; i < APPLET_SLOTS * 2; ++i) {
       trigmap[i].source = (i%4) + 1;
+      trigmap[i].Reset(true);
       cvmap[i].source = i + 1;
+      cvmap[i].attenuversion = 60;
+      frame.output_slew[i] = 0;
+      frame.output_atten[i] = 60;
+      frame.clockoutskip[i] = 0;
+      frame.clockinskip[i] = 0;
       clock_m.SetMultiply(0, i);
     }
   }
 
+  void PokePopup(PopupType pop, const char* msg) {
+    popup_msg = msg;
+    popup_type = pop;
+    popup_tick = OC::CORE::ticks;
+  }
   void PokePopup(PopupType pop, ErrMsgIndex err) {
-    msg_idx = err;
+    popup_msg = OC::Strings::err_msg[err];
     popup_type = pop;
     popup_tick = OC::CORE::ticks;
   }
@@ -171,6 +199,7 @@ namespace HS {
       } else { // edit mask bits
         const int idx = q_edit - 4;
         q_engine[qview].EditMask(idx, dir>0);
+        q_engine[qview].Reconfig();
       }
     }
   }
@@ -246,8 +275,11 @@ namespace HS {
         pw = 88; ph = 28;
         break;
       case MESSAGE_POPUP:
-        px = 16; py = 23;
-        pw = 96; ph = 18;
+        pw = 6 * strlen(popup_msg) + 10;
+        pw = min(pw, 124);
+        ph = 18;
+        px = 62 - (pw/2);
+        py = 23;
         break;
       default:
         px = 23; py = 23;
@@ -262,14 +294,14 @@ namespace HS {
     switch (popup_type) {
       default:
       case MESSAGE_POPUP:
-        gfxPrint(OC::Strings::err_msg[msg_idx]);
+        gfxPrint(popup_msg);
         break;
       case MENU_POPUP:
         gfxPrint(78, 30, "Load");
         gfxPrint(78, 40, config_cursor == AUTO_SAVE ? "(auto)" : "Save");
-        gfxIcon(78, 50, ZAP_ICON);
+        gfxIcon(78, 50, PhzIcons::snowflakeA);
         gfxIcon(86, 50, ZAP_ICON);
-        gfxIcon(94, 50, ZAP_ICON);
+        gfxIcon(94, 50, PhzIcons::snowflakeB);
         //gfxPrint(78, 50, "????");
 
         switch (config_cursor) {
@@ -389,6 +421,30 @@ namespace HS {
     PokePopup(CLOCK_POPUP);
   }
 
+  bool applet_is_hidden(const int& index);
+  const char * get_applet_name(const int index);
+  const uint8_t * get_applet_icon(const int index);
+
+  void DrawAppletList(bool blink) {
+    const size_t LineH = 12;
+
+    int y = (64 - (5 * LineH)) / 2;
+
+    for (int current = showhide_cursor.first_visible();
+         current <= showhide_cursor.last_visible();
+         ++current, y += LineH) {
+
+      if (!applet_is_hidden(current))
+        gfxIcon(  12, y + 1, get_applet_icon(current));
+      gfxPrint( 23, y + 2, get_applet_name(current));
+
+      if (current == showhide_cursor.cursor_pos()) {
+        gfxIcon(1, y + 1, RIGHT_ICON);
+        if (blink) gfxInvert(0, y, 10, 10);
+      }
+    }
+  }
+
 } // namespace HS
 
 //////////////// Hemisphere-like graphics methods for easy porting
@@ -481,6 +537,11 @@ void gfxPrintFreqFromPitch(int16_t pitch) {
     denom = t;
   }
   int int_part = num / denom;
+  bool minutes = (swap && int_part > 600);
+  if (minutes) {
+    denom *= 60;
+    int_part = num / denom;
+  }
   int digits = 0;
   if (int_part < 10)
     digits = 1;
@@ -502,7 +563,7 @@ void gfxPrintFreqFromPitch(int16_t pitch) {
     digits++;
   }
   if (swap) {
-    gfxPrint("s");
+    gfxPrint(minutes ? "m" : "s");
   } else {
     gfxPrint("Hz");
   }
@@ -576,4 +637,109 @@ void gfxFooter(const char *str, const uint8_t *icon) {
     x += 8;
   }
   gfxPrint(x, 56, str);
+}
+
+// --- Phazerville Screensaver Library ---
+struct Zap {
+    int x = 12800;
+    int y = 6400;
+    int x_v = 6;
+    int y_v = 3;
+    uint16_t flip = 0;
+
+    void Flip() {
+      flip = random(0xffff);
+      Drift();
+    }
+    void Move(bool stars) {
+        if (stars) Move(6100, 2900);
+        else Move();
+    }
+    void Move(int target_x = -1, int target_y = -1) {
+        x += x_v;
+        y += y_v;
+        if (x > 12700 || x < 0 || y > 6300 || y < 0) {
+            if (target_x < 0 || target_y < 0) {
+                x = random(12700);
+                y = 0; // from the top
+                y_v = 5 + random(10); // only falling
+            } else {
+                x = target_x + random(400);
+                y = target_y + random(400);
+                CONSTRAIN(x, 0, 12700);
+                CONSTRAIN(y, 0, 6300);
+                y_v = random(31) - 15;
+            }
+
+            x_v = random(51) - 25;
+            if (x_v == 0) ++x_v;
+            if (y_v == 0) ++y_v;
+        }
+    }
+    void Drift() {
+      // Snow drifts randomly as it falls
+      x_v += random(3) - 1;
+      CONSTRAIN(x_v, -5, 5);
+    }
+};
+static constexpr int HOW_MANY_ZAPS = 30;
+Zap zaps[HOW_MANY_ZAPS];
+void ZapScreensaver(const uint8_t stars) {
+  static int frame_delay = 0;
+  static elapsedMillis timer = 0;
+  const uint8_t* flake_icon[] = {
+    PhzIcons::snowflakeA,
+    PhzIcons::snowflakeB,
+    PhzIcons::snowflakeC,
+    ZAP_ICON
+  };
+
+  if (stars == 0 && timer > 100) {
+    for (int i = 0; i < 10; i++) {
+      zaps[i].Flip();
+    }
+    timer = 0;
+  }
+  for (int i = 0; i < (stars ? HOW_MANY_ZAPS : 10); i++) {
+    if (frame_delay & 0x1) {
+      if (stars > 1) {
+        // Zips respawn from their previous sibling
+        if (0 == i) zaps[0].Move();
+        else zaps[i].Move(zaps[i-1].x, zaps[i-1].y);
+      } else
+        zaps[i].Move(stars == 1); // centered starfield
+    }
+
+    if (stars && frame_delay == 0) {
+      // accel
+      zaps[i].x_v *= 2;
+      zaps[i].y_v *= 2;
+    }
+
+    if (stars)
+      gfxPixel(zaps[i].x/100, zaps[i].y/100);
+    else {
+      const uint8_t idx = (zaps[i].flip > OC::CORE::FreeRam()) ? 3 : (zaps[i].flip % 3);
+      gfxIcon(zaps[i].x/100, zaps[i].y/100, flake_icon[idx]);
+    }
+  }
+  if (--frame_delay < 0) frame_delay = 100;
+}
+
+void BeatCounterScreensaver() {
+  static SegmentDisplay digits{BIG_SEGMENTS};
+  const int y = 27;
+
+  if (HS::clock_m.IsRunning()) {
+    gfxIcon(60, 10, HS::clock_m.Cycle() ? METRO_L_ICON : METRO_R_ICON);
+  }
+
+  // 4-bar phrases
+  digits.PrintWhole(12, y, HS::clock_m.beat_count / 16 + 1, 100);
+  gfxRect(48, y+8, 3, 3);
+  // bars (measures)
+  digits.PrintDigit(64, y, HS::clock_m.beat_count / 4 % 4 + 1);
+  gfxRect(80, y+8, 3, 3);
+  // beats
+  digits.PrintDigit(96, y, HS::clock_m.beat_count % 4 + 1);
 }
