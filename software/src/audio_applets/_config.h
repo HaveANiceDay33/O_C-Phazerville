@@ -33,6 +33,7 @@
 #include "VCAApplet.h"
 #include "WAVPlayerApplet.h"
 #include "OneShotPlayerApplet.h"
+#include "RadioMusicApplet.h"
 #include "HandSawApplet.h"
 #include "FreeverbApplet.h"
 #include "SamverbApplet.h"
@@ -71,6 +72,7 @@ constexpr Registry mono_applets = Registry<HemisphereAudioApplet, NUM_SLOTS * 2
     , DeclareFancyApplet<FMDrumApplet>
     , DeclareFancyApplet<WavPlayerApplet<MONO>>
     , DeclareFancyApplet<OneShotPlayerApplet<MONO>>
+    , DeclareFancyApplet<RadioMusicApplet>
     , DeclareFancyApplet<VcaApplet<MONO>>
     , DeclareFancyApplet<LadderApplet<MONO>>
     , DeclareFancyApplet<FilterFolderApplet<MONO>>
