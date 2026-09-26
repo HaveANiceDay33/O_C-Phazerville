@@ -26,7 +26,6 @@
  *   Station  -- which file in that folder, CV assignable
  *   Start    -- offset as a percentage of file length, CV assignable
  *   Reset    -- trigger input; jumps to the start offset
- *   Level    -- output gain in dB, CV assignable
  *   AuxButton (X or Y) -- reset to start, by hand
  *
  * Station changes and resets are declicked with a short gain fade, and all
@@ -42,22 +41,7 @@ public:
     return "RadioMus";
   }
 
-  void Start() {
-    PatchCable(input, 0, mixer, 1);
-    mixer.gain(1, 1.0f);
-    PatchCable(wavplayer, 0, mixer, 0);
-    mixer.gain(0, 0.0f);
-    PatchCable(mixer, 0, output, 0);
-
-    if (!SDcard_Ready) {
-      Serial.println("Radio Music: unable to access the SD card");
-      return;
-    }
-    wavplayer.enableInterpolation(true);
-    wavplayer.setBufferInPSRAM(false);
-
-    scan_banks = true;
-  }
+  void Start();
 
   void Unload() {
     wavplayer.stop();
@@ -90,204 +74,25 @@ public:
     if (fade < fade_target) fade = fminf(fade + FADE_STEP, fade_target);
     else if (fade > fade_target) fade = fmaxf(fade - FADE_STEP, fade_target);
 
-    float gain = dbToScalar(level) + level_cv.InF(0.0f);
-    if (gain < 0.0f) gain = 0.0f;
-    mixer.gain(0, fade * gain);
+    mixer.gain(0, fade);
   }
 
   // --- runs in the main loop: SD access lives here ----------------------
-  void mainloop() {
-    if (!SDcard_Ready) return;
+  void mainloop();
 
-    if (scan_banks) {
-      ScanBanks();
-      scan_banks = false;
-      scan_stations = true;
-    }
-    if (scan_stations) {
-      ScanStations();
-      scan_stations = false;
-      reload_station = true;
-      if (station >= station_count) station = station_count ? station_count - 1 : 0;
-    }
-
-    // advance the free-running playhead in real time, whether or not the
-    // current station is audible -- this is what makes it a radio
-    uint32_t now = millis();
-    if (station_ready) playhead_ms += now - last_millis;
-    last_millis = now;
-
-    // wait for the declick fade before touching the card
-    if (fade > 0.0f) return;
-
-    if (reload_station || station_mod != loaded_station) {
-      LoadStation(station_mod);
-      reload_station = false;
-      want_reset = false;
-      return;
-    }
-    if (want_reset) {
-      playhead_ms = 0;
-      SeekToPlayhead();
-      want_reset = false;
-    }
-  }
-
-  void View() {
-    if (!SDcard_Ready) {
-      gfxPrint(4, 25, "NO SD CARD!");
-      return;
-    }
-    if (bank_count == 0) {
-      gfxPrint(1, 25, "NO BANKS");
-      gfxPrint(1, 35, "on SD root");
-      return;
-    }
-
-    int y = 13;
-    gfxIcon(1, y, station_ready ? PLAY_ICON : STOP_ICON);
-
-    gfxStartCursor(12, y);
-    graphics.printf("B%02u", BankNumber());
-    gfxEndCursor(cursor == BANK, "Bank");
-
-    gfxStartCursor(38, y);
-    if (station_count > 0) graphics.printf("%02u", station_mod + 1);
-    else gfxPrint("--");
-    gfxEndCursor(cursor == STATION, "Station");
-    if (station_mod != station) gfxIcon(54, y, CV_ICON);
-
-    // station name, extension stripped
-    y += 10;
-    if (station_count > 0) gfxPrint(1, y, display_name);
-    else gfxPrint(1, y, "(empty)");
-
-    // elapsed position of the shared playhead
-    y += 10;
-    if (station_ready) {
-      uint32_t tsec = wavplayer.positionMillis() / 1000;
-      gfxPos(1, y);
-      graphics.printf("%02lu:%02lu", tsec / 60, tsec % 60);
-    }
-
-    y += 10;
-    if (cursor < LEVEL) {
-      gfxIcon(1, y, PULSES_ICON);
-      gfxStartCursor(11, y);
-      graphics.printf(
-        "%3u%%", (cursor == START && EditMode()) ? start_pct : start_mod
-      );
-      gfxEndCursor(cursor == START, "Start");
-      if (start_mod != start_pct) gfxIcon(40, y, CV_ICON);
-      gfxStartCursor(48, y);
-      gfxPrint(start_cv);
-      gfxEndCursor(cursor == START_CV, false, start_cv.InputName(), "Start CV");
-    } else {
-      gfxStartCursor(1, y);
-      gfxPrintDb(level);
-      gfxEndCursor(cursor == LEVEL, "Gain");
-      gfxStartCursor(48, y);
-      gfxPrint(level_cv);
-      gfxEndCursor(cursor == LEVEL_CV, false, level_cv.InputName(), "Gain CV");
-    }
-
-    y += 10;
-    gfxIcon(1, y, WAVEFORM_ICON);
-    gfxStartCursor(11, y);
-    gfxPrint(station_cv);
-    gfxEndCursor(
-      cursor == STATION_CV, false, station_cv.InputName(), "Station CV"
-    );
-    gfxIcon(34, y, CLOCK_ICON);
-    gfxStartCursor(44, y);
-    gfxPrint(reset_cv);
-    gfxEndCursor(cursor == RESET_TRIG, false, reset_cv.InputName(), "Reset");
-
-    gfxDisplayInputMapEditor();
-  }
+  void View();
 
   void AuxButton() {
     want_reset = true;
   }
 
-  void OnButtonPress() {
-    if (CheckEditInputMapPress(
-          cursor,
-          IndexedInput(STATION_CV, station_cv),
-          IndexedInput(START_CV, start_cv),
-          IndexedInput(RESET_TRIG, reset_cv),
-          IndexedInput(LEVEL_CV, level_cv)
-        ))
-      return;
-    CursorToggle();
-  }
+  void OnButtonPress();
 
-  void OnEncoderMove(int direction) {
-    if (!EditMode()) {
-      MoveCursor(cursor, direction, NUM_PARAMS - 1);
-      return;
-    }
-    if (EditSelectedInputMap(direction)) return;
-    switch (cursor) {
-      case BANK:
-        if (bank_count > 0) {
-          // wrap around at both ends, as asked
-          bank_idx = (bank_idx + direction + bank_count) % bank_count;
-          station = 0;
-          scan_stations = true;
-        }
-        break;
-      case STATION:
-        if (station_count > 0)
-          station = constrain(station + direction, 0, station_count - 1);
-        break;
-      case STATION_CV:
-        station_cv.ChangeSource(direction);
-        break;
-      case START:
-        start_pct = constrain(start_pct + direction, 0, 100);
-        break;
-      case START_CV:
-        start_cv.ChangeSource(direction);
-        break;
-      case RESET_TRIG:
-        reset_cv.ChangeSource(direction);
-        break;
-      case LEVEL:
-        level = constrain(level + direction, LVL_MIN_DB, LVL_MAX_DB);
-        break;
-      case LEVEL_CV:
-        level_cv.ChangeSource(direction);
-        break;
-    }
-  }
+  void OnEncoderMove(int direction);
 
-  void OnDataRequest(std::array<uint64_t, CONFIG_SIZE>& data) override {
-    // stop playback so a preset save can't collide with SD streaming
-    wavplayer.stop();
-    station_ready = false;
-    uint8_t bank_num = BankNumber();
-    uint8_t station_u8 = (uint8_t)constrain(station, 0, 255);
-    uint8_t start_u8 = (uint8_t)start_pct;
-    data[0] = PackPackables(bank_num, station_u8, start_u8, level);
-    data[1] = PackPackables(station_cv, start_cv, level_cv);
-    data[2] = PackPackables(reset_cv);
-    data[3] = 0;
-    reload_station = true;
-  }
+  void OnDataRequest(std::array<uint64_t, CONFIG_SIZE>& data) override;
 
-  void OnDataReceive(const std::array<uint64_t, CONFIG_SIZE>& data) override {
-    uint8_t bank_num = 0;
-    uint8_t station_u8 = 0;
-    uint8_t start_u8 = 0;
-    UnpackPackables(data[0], bank_num, station_u8, start_u8, level);
-    UnpackPackables(data[1], station_cv, start_cv, level_cv);
-    UnpackPackables(data[2], reset_cv);
-    saved_bank_number = bank_num;
-    station = station_u8;
-    start_pct = constrain((int)start_u8, 0, 100);
-    scan_banks = true;
-  }
+  void OnDataReceive(const std::array<uint64_t, CONFIG_SIZE>& data) override;
 
   AudioStream* InputStream() override {
     return &input;
@@ -307,8 +112,6 @@ private:
     START_CV,
     STATION_CV,
     RESET_TRIG,
-    LEVEL,
-    LEVEL_CV,
 
     NUM_PARAMS
   };
@@ -325,11 +128,9 @@ private:
   static constexpr float FADE_STEP = 1.0f / (5.0f * HEMISPHERE_CLOCK_TICKS);
 
   int cursor = 0;
-  int8_t level = 0; // dB
 
   CVInputMap station_cv;
   CVInputMap start_cv;
-  CVInputMap level_cv;
   DigitalInputMap reset_cv;
 
   AudioPassthrough<MONO> input;
@@ -513,6 +314,213 @@ private:
   void SeekToPlayhead() {
     if (!station_ready) return;
     wavplayer.setPlayStart(play_start_arbitrary, PlayheadSample(loaded_station));
-    wavplayer.play();
+    // NOT play(): ResamplingReader::play() calls stop() first, and its
+    // available() check requires _play_state != STOPPED, so calling it on
+    // an already-playing reader leaves it stopped for good. retrigger()
+    // honours play_start_arbitrary and goes straight back to PLAYING.
+    wavplayer.retrigger();
   }
 };
+
+// ---------------------------------------------------------------------
+// Defined out-of-class so FLASHMEM actually takes effect under LTO.
+// These are UI / preset / main-loop members: keeping them out of ITCM
+// drops .text.itcm below a 32KB FlexRAM bank boundary, which hands a
+// whole bank back to DTCM. Controller() and the stream accessors stay
+// in ITCM -- they run at audio rate.
+// ---------------------------------------------------------------------
+
+FLASHMEM void RadioMusicApplet::Start() {
+  PatchCable(input, 0, mixer, 1);
+  mixer.gain(1, 1.0f);
+  PatchCable(wavplayer, 0, mixer, 0);
+  mixer.gain(0, 0.0f);
+  PatchCable(mixer, 0, output, 0);
+
+  if (!SDcard_Ready) {
+    Serial.println("Radio Music: unable to access the SD card");
+    return;
+  }
+  wavplayer.enableInterpolation(true);
+  wavplayer.setBufferInPSRAM(false);
+
+  scan_banks = true;
+}
+
+FLASHMEM void RadioMusicApplet::mainloop() {
+  if (!SDcard_Ready) return;
+
+  if (scan_banks) {
+    ScanBanks();
+    scan_banks = false;
+    scan_stations = true;
+  }
+  if (scan_stations) {
+    ScanStations();
+    scan_stations = false;
+    reload_station = true;
+    if (station >= station_count) station = station_count ? station_count - 1 : 0;
+  }
+
+  // advance the free-running playhead in real time, whether or not the
+  // current station is audible -- this is what makes it a radio
+  uint32_t now = millis();
+  if (station_ready) playhead_ms += now - last_millis;
+  last_millis = now;
+
+  // wait for the declick fade before touching the card
+  if (fade > 0.0f) return;
+
+  if (reload_station || station_mod != loaded_station) {
+    LoadStation(station_mod);
+    reload_station = false;
+    want_reset = false;
+    return;
+  }
+  if (want_reset) {
+    playhead_ms = 0;
+    SeekToPlayhead();
+    want_reset = false;
+  }
+}
+
+FLASHMEM void RadioMusicApplet::View() {
+  if (!SDcard_Ready) {
+    gfxPrint(4, 25, "NO SD CARD!");
+    return;
+  }
+  if (bank_count == 0) {
+    gfxPrint(1, 25, "NO BANKS");
+    gfxPrint(1, 35, "on SD root");
+    return;
+  }
+
+  int y = 13;
+  gfxIcon(1, y, station_ready ? PLAY_ICON : STOP_ICON);
+
+  gfxStartCursor(12, y);
+  graphics.printf("B%02u", BankNumber());
+  gfxEndCursor(cursor == BANK, "Bank");
+
+  gfxStartCursor(38, y);
+  if (station_count > 0) graphics.printf("%02u", station_mod + 1);
+  else gfxPrint("--");
+  gfxEndCursor(cursor == STATION, "Station");
+  if (station_mod != station) gfxIcon(54, y, CV_ICON);
+
+  // station name, extension stripped
+  y += 10;
+  if (station_count > 0) gfxPrint(1, y, display_name);
+  else gfxPrint(1, y, "(empty)");
+
+  // elapsed position of the shared playhead
+  y += 10;
+  if (station_ready) {
+    uint32_t tsec = wavplayer.positionMillis() / 1000;
+    gfxPos(1, y);
+    graphics.printf("%02lu:%02lu", tsec / 60, tsec % 60);
+  }
+
+  y += 10;
+  gfxIcon(1, y, PULSES_ICON);
+  gfxStartCursor(11, y);
+  graphics.printf(
+    "%3u%%", (cursor == START && EditMode()) ? start_pct : start_mod
+  );
+  gfxEndCursor(cursor == START, "Start");
+  if (start_mod != start_pct) gfxIcon(40, y, CV_ICON);
+  gfxStartCursor(48, y);
+  gfxPrint(start_cv);
+  gfxEndCursor(cursor == START_CV, false, start_cv.InputName(), "Start CV");
+
+  y += 10;
+  gfxIcon(1, y, WAVEFORM_ICON);
+  gfxStartCursor(11, y);
+  gfxPrint(station_cv);
+  gfxEndCursor(
+    cursor == STATION_CV, false, station_cv.InputName(), "Station CV"
+  );
+  gfxIcon(34, y, CLOCK_ICON);
+  gfxStartCursor(44, y);
+  gfxPrint(reset_cv);
+  gfxEndCursor(cursor == RESET_TRIG, false, reset_cv.InputName(), "Reset");
+
+  gfxDisplayInputMapEditor();
+}
+
+FLASHMEM void RadioMusicApplet::OnButtonPress() {
+  if (CheckEditInputMapPress(
+        cursor,
+        IndexedInput(STATION_CV, station_cv),
+        IndexedInput(START_CV, start_cv),
+        IndexedInput(RESET_TRIG, reset_cv)
+      ))
+    return;
+  CursorToggle();
+}
+
+FLASHMEM void RadioMusicApplet::OnEncoderMove(int direction) {
+  if (!EditMode()) {
+    MoveCursor(cursor, direction, NUM_PARAMS - 1);
+    return;
+  }
+  if (EditSelectedInputMap(direction)) return;
+  switch (cursor) {
+    case BANK:
+      if (bank_count > 0) {
+        // wrap around at both ends, as asked
+        bank_idx = (bank_idx + direction + bank_count) % bank_count;
+        station = 0;
+        scan_stations = true;
+      }
+      break;
+    case STATION:
+      if (station_count > 0)
+        station = constrain(station + direction, 0, station_count - 1);
+      break;
+    case STATION_CV:
+      station_cv.ChangeSource(direction);
+      break;
+    case START:
+      start_pct = constrain(start_pct + direction, 0, 100);
+      break;
+    case START_CV:
+      start_cv.ChangeSource(direction);
+      break;
+    case RESET_TRIG:
+      reset_cv.ChangeSource(direction);
+      break;
+  }
+}
+
+FLASHMEM void RadioMusicApplet::OnDataRequest(
+  std::array<uint64_t, CONFIG_SIZE>& data
+) {
+  // stop playback so a preset save can't collide with SD streaming
+  wavplayer.stop();
+  station_ready = false;
+  uint8_t bank_num = BankNumber();
+  uint8_t station_u8 = (uint8_t)constrain(station, 0, 255);
+  uint8_t start_u8 = (uint8_t)start_pct;
+  data[0] = PackPackables(bank_num, station_u8, start_u8);
+  data[1] = PackPackables(station_cv, start_cv);
+  data[2] = PackPackables(reset_cv);
+  data[3] = 0;
+  reload_station = true;
+}
+
+FLASHMEM void RadioMusicApplet::OnDataReceive(
+  const std::array<uint64_t, CONFIG_SIZE>& data
+) {
+  uint8_t bank_num = 0;
+  uint8_t station_u8 = 0;
+  uint8_t start_u8 = 0;
+  UnpackPackables(data[0], bank_num, station_u8, start_u8);
+  UnpackPackables(data[1], station_cv, start_cv);
+  UnpackPackables(data[2], reset_cv);
+  saved_bank_number = bank_num;
+  station = station_u8;
+  start_pct = constrain((int)start_u8, 0, 100);
+  scan_banks = true;
+}
+
