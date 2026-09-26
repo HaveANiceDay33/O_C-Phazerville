@@ -1,3 +1,4 @@
+# Fork Specific Notes
 This is a fork of Phazervile: https://github.com/djphazer/O_C-Phazerville
 
 I am the author of the Handsaw, Bungverb, Reverb, and RadioMusic audio applets. 
@@ -7,10 +8,11 @@ Original design credited to Tom Whitwell.
 Repo: https://github.com/TomWhitwell/RadioMusic
 License: Creative Commons licensed by Tom Whitwell: https://creativecommons.org/licenses/by-sa/3.0/
 
+# Helpful tips from the original repo
 
 ## How To Hack It
 
-### Option 1: Platform IO
+[### Option 1: Platform IO](https://creativecommons.org/licenses/by-sa/3.0/)
 This firmware fork is primarily built using Platform IO, a Python-based build toolchain, available as either a [standalone CLI](https://docs.platformio.org/en/latest/core/installation/methods/installer-script.html) or a [full-featured IDE](https://platformio.org/install/ide), as well as a plugin for VSCode and other existing IDEs. Follow one of those links to get that set up first.
 
 The PlatformIO project for the source code lives within the `software/` directory. From there, you can Build the desired configuration and Upload via USB to your module. In the terminal, I type:
